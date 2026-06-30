@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" font-family="Arial, sans-serif" font-size="12">
+
+  <!-- Background -->
+  <rect width="920" height="620" fill="#f8fafc"/>
+
+  <!-- ── Browser SPA Container ── -->
+  <rect x="180" y="30" width="560" height="390" rx="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="2"/>
+  <text x="460" y="55" text-anchor="middle" font-weight="bold" font-size="14" fill="#1e40af">Browser — React SPA (App.jsx)</text>
+
+  <!-- Row 1: Auth Gate / Inventory Grid / Filter Bar -->
+  <rect x="200" y="70" width="120" height="48" rx="6" fill="#fff2cc" stroke="#d6b656"/>
+  <text x="260" y="90" text-anchor="middle" font-weight="bold" fill="#92400e">Auth Gate</text>
+  <text x="260" y="108" text-anchor="middle" fill="#92400e">onAuthStateChanged</text>
+
+  <rect x="340" y="70" width="140" height="48" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="410" y="90" text-anchor="middle" font-weight="bold" fill="#166534">Inventory Data Grid</text>
+  <text x="410" y="108" text-anchor="middle" fill="#166534">onSnapshot (live)</text>
+
+  <rect x="500" y="70" width="150" height="48" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="575" y="89" text-anchor="middle" font-weight="bold" fill="#166534">Search + Room Filter</text>
+  <text x="575" y="107" text-anchor="middle" fill="#166534">Missing Prices Filter</text>
+
+  <!-- Row 2: CRUD / AI Scan / Photo Upload -->
+  <rect x="200" y="148" width="140" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="270" y="168" text-anchor="middle" font-weight="bold" fill="#166534">Manual CRUD</text>
+  <text x="270" y="186" text-anchor="middle" fill="#166534">Add / Edit / Delete</text>
+
+  <rect x="360" y="148" width="140" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="430" y="168" text-anchor="middle" font-weight="bold" fill="#166534">AI Scan Flow</text>
+  <text x="430" y="186" text-anchor="middle" fill="#166534">Camera / Image Upload</text>
+
+  <rect x="520" y="148" width="140" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="590" y="168" text-anchor="middle" font-weight="bold" fill="#166534">Photo Upload</text>
+  <text x="590" y="186" text-anchor="middle" fill="#166534">Single / Multi-Item</text>
+
+  <!-- Row 3: Analytics / CSV / Seeding -->
+  <rect x="200" y="228" width="140" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="270" y="248" text-anchor="middle" font-weight="bold" fill="#166534">Analytics Dashboard</text>
+  <text x="270" y="266" text-anchor="middle" fill="#166534">Totals + Bar Chart</text>
+
+  <rect x="360" y="228" width="120" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="420" y="252" text-anchor="middle" font-weight="bold" fill="#166534">CSV Export</text>
+  <text x="420" y="270" text-anchor="middle" fill="#166534">Room/Name/Value/Photo</text>
+
+  <rect x="500" y="228" width="160" height="52" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="580" y="248" text-anchor="middle" font-weight="bold" fill="#166534">First-Run Seeding</text>
+  <text x="580" y="266" text-anchor="middle" fill="#166534">Firestore Batch Write</text>
+
+  <!-- Row 4: Reset to Defaults -->
+  <rect x="200" y="308" width="140" height="48" rx="6" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="270" y="328" text-anchor="middle" font-weight="bold" fill="#166534">Reset to Defaults</text>
+  <text x="270" y="346" text-anchor="middle" fill="#166534">Delete + Re-seed</text>
+
+  <!-- ── External Firebase Services ── -->
+
+  <!-- Firebase Auth -->
+  <rect x="10" y="150" width="145" height="60" rx="8" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+  <text x="82" y="172" text-anchor="middle" font-weight="bold" font-size="13" fill="#7f1d1d">Firebase Auth</text>
+  <text x="82" y="190" text-anchor="middle" fill="#7f1d1d">Google Provider</text>
+
+  <!-- Firestore -->
+  <rect x="10" y="300" width="145" height="60" rx="8" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+  <text x="82" y="322" text-anchor="middle" font-weight="bold" font-size="13" fill="#7f1d1d">Firestore</text>
+  <text x="82" y="340" text-anchor="middle" fill="#7f1d1d">users/{uid}/items</text>
+
+  <!-- Firebase Storage -->
+  <rect x="765" y="300" width="145" height="60" rx="8" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+  <text x="837" y="322" text-anchor="middle" font-weight="bold" font-size="13" fill="#7f1d1d">Firebase Storage</text>
+  <text x="837" y="340" text-anchor="middle" fill="#7f1d1d">users/{uid}/photos/</text>
+
+  <!-- Gemini API -->
+  <rect x="765" y="148" width="145" height="70" rx="8" fill="#e1d5e7" stroke="#9673a6" stroke-width="2"/>
+  <text x="837" y="170" text-anchor="middle" font-weight="bold" font-size="13" fill="#4c1d95">Gemini 2.5 Flash</text>
+  <text x="837" y="188" text-anchor="middle" fill="#4c1d95">generativelanguage</text>
+  <text x="837" y="206" text-anchor="middle" fill="#4c1d95">.googleapis.com</text>
+
+  <!-- ── CI/CD Row ── -->
+
+  <!-- GitHub Actions -->
+  <rect x="220" y="500" width="160" height="60" rx="8" fill="#fff2cc" stroke="#d6b656" stroke-width="2"/>
+  <text x="300" y="522" text-anchor="middle" font-weight="bold" font-size="13" fill="#92400e">GitHub Actions</text>
+  <text x="300" y="540" text-anchor="middle" fill="#92400e">CI/CD — deploy.yml</text>
+
+  <!-- Firebase Hosting -->
+  <rect x="440" y="500" width="145" height="60" rx="8" fill="#f8cecc" stroke="#b85450" stroke-width="2"/>
+  <text x="512" y="522" text-anchor="middle" font-weight="bold" font-size="13" fill="#7f1d1d">Firebase Hosting</text>
+  <text x="512" y="540" text-anchor="middle" fill="#7f1d1d">CDN — dist/</text>
+
+  <!-- ── Arrows ── -->
+
+  <!-- Auth Gate → Firebase Auth -->
+  <line x1="200" y1="94" x2="155" y2="180" stroke="#6c8ebf" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="162" y="135" font-size="10" fill="#374151">sign-in / sign-out</text>
+
+  <!-- Inventory Grid → Firestore -->
+  <line x1="340" y1="118" x2="155" y2="310" stroke="#82b366" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="175" y="225" font-size="10" fill="#374151">onSnapshot</text>
+
+  <!-- CRUD → Firestore -->
+  <line x1="200" y1="174" x2="155" y2="330" stroke="#82b366" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Seeding → Firestore -->
+  <line x1="500" y1="270" x2="155" y2="340" stroke="#82b366" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="248" y="320" font-size="10" fill="#374151">batch write</text>
+
+  <!-- AI Scan → Gemini -->
+  <line x1="500" y1="174" x2="765" y2="183" stroke="#9673a6" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="575" y="165" font-size="10" fill="#374151">base64 image + schema</text>
+
+  <!-- Photo Upload → Storage -->
+  <line x1="660" y1="174" x2="765" y2="320" stroke="#82b366" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="690" y="270" font-size="10" fill="#374151">upload</text>
+
+  <!-- Photo Upload → Firestore (write URL) -->
+  <line x1="520" y1="196" x2="155" y2="335" stroke="#82b366" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+  <text x="300" y="290" font-size="10" fill="#374151">write photoUrl</text>
+
+  <!-- GitHub Actions → Firebase Hosting -->
+  <line x1="380" y1="530" x2="440" y2="530" stroke="#d6b656" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="385" y="520" font-size="10" fill="#374151">deploy dist/</text>
+
+  <!-- Firebase Hosting → Browser SPA -->
+  <line x1="512" y1="500" x2="460" y2="420" stroke="#b85450" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="500" y="468" font-size="10" fill="#374151">serves SPA</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- Legend -->
+  <rect x="10" y="500" width="185" height="100" rx="6" fill="white" stroke="#cbd5e1"/>
+  <text x="102" y="518" text-anchor="middle" font-weight="bold" fill="#374151">Legend</text>
+  <rect x="20" y="526" width="14" height="14" rx="3" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="40" y="538" fill="#374151">React SPA</text>
+  <rect x="20" y="546" width="14" height="14" rx="3" fill="#f8cecc" stroke="#b85450"/>
+  <text x="40" y="558" fill="#374151">Firebase Service</text>
+  <rect x="20" y="566" width="14" height="14" rx="3" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="40" y="578" fill="#374151">External API</text>
+  <rect x="20" y="586" width="14" height="14" rx="3" fill="#fff2cc" stroke="#d6b656"/>
+  <text x="40" y="598" fill="#374151">CI / CD</text>
+
+</svg>
