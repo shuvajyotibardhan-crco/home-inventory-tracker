@@ -142,13 +142,13 @@ Max file size enforced client-side at 10 MB.
 
 ---
 
-## Defined Rooms (canonical list — used in dropdowns)
+## Defined Rooms (default list for 158 N Edge Cliff St — used in dropdowns)
 ```
-Living Room | Kitchen | Master Bedroom | Bedroom 2 | Bedroom 3 |
-Bathroom | En-suite | Dining Room | Study / Office | Garage |
-Utility Room | Loft / Attic | Garden / Shed | Hallway
+Laundry Room | Kids Room | Guest Room | Flex Room | Master Bed |
+Loft | Living Room | Dining Room | Kitchen | Garage |
+Backyard | Front Yard | Front Porch
 ```
-14 rooms total.
+13 rooms. The room dropdown also accepts free-text input so users can add rooms not in this list.
 
 ---
 
@@ -228,19 +228,24 @@ async function initFirstHouse(u):
     email: u.email, joinedAt: serverTimestamp()
   })
   if hasOldData:
-    // Migrate items
-    batch = writeBatch(db)
-    for snap in oldItemsSnap.docs:
-      newRef = doc(db, "houses", houseId, "items", snap.id)
-      batch.set(newRef, snap.data())
-    await batch.commit()
-    // Migrate photos
-    batch2 = writeBatch(db)
-    for snap in oldPhotosSnap.docs:
-      newRef = doc(db, "houses", houseId, "photos", snap.id)
-      batch2.set(newRef, snap.data())
-    await batch2.commit()
-  // New users start with an empty house — no seeding
+    // Delete incorrect placeholder data from old path
+    deleteBatch = writeBatch(db)
+    for snap in oldItemsSnap.docs: deleteBatch.delete(snap.ref)
+    await deleteBatch.commit()
+    // Write real inventory (MIGRATION_ITEMS — 69 items for 158 N Edge Cliff St)
+    seedBatch = writeBatch(db)
+    for item in MIGRATION_ITEMS:
+      ref = doc(collection(db, "houses", houseId, "items"))
+      seedBatch.set(ref, { ...item, photoUrl: null, createdAt: serverTimestamp() })
+    await seedBatch.commit()
+    // Migrate any existing photo metadata
+    if !oldPhotosSnap.empty:
+      photoBatch = writeBatch(db)
+      for snap in oldPhotosSnap.docs:
+        photoBatch.set(doc(collection(db, "houses", houseId, "photos")), snap.data())
+        photoBatch.delete(snap.ref)
+      await photoBatch.commit()
+  // else: new user — empty house, no items written
   await updateDoc(doc(db, "users", u.uid), { houseIds: arrayUnion(houseId) })
   setActiveHouseId(houseId)
   set seeding = false

@@ -53,7 +53,7 @@ A premium single-page home asset and inventory management app for homeowners who
 
 **Acceptance Criteria:**
 1. On first sign-in, if the user has no `houseIds` in their profile, the app shall automatically create their first house with no prompt.
-2. If the user has existing items at the legacy `users/{uid}/items` path, the app shall silently migrate all of them (batch copy + delete) into `houses/{houseId}/items`. This migration must run exactly once.
+2. If the user has existing items at the legacy `users/{uid}/items` path, the app shall delete them and write the correct `MIGRATION_ITEMS` inventory (69 real items for 158 N Edge Cliff St, Castle Rock, CO 80104) into `houses/{houseId}/items`. This migration must run exactly once.
 3. The migration must use a Firestore batch write for atomicity on each collection (items, then photos).
 4. A full-screen loading overlay shall be shown during migration with a "Setting up your home…" message.
 5. New users with no legacy data shall receive an empty house — no default dataset shall be seeded.
