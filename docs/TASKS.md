@@ -44,7 +44,6 @@ Each task maps to one atomic commit. Tasks are ordered by dependency.
   - Enable Firestore, Storage, Authentication (Google provider)
   - Generate service account JSON → add as `FIREBASE_SERVICE_ACCOUNT` GitHub Secret
   - Add all `VITE_*` secrets to GitHub Actions
-  - Add Gemini API key as `VITE_GEMINI_API_KEY` secret
 
 **Commit:** `docs: manual setup steps`
 
@@ -126,28 +125,6 @@ Each task maps to one atomic commit. Tasks are ordered by dependency.
 
 ---
 
-## T12 — AI document scan (F5)
-- [ ] "Scan Paper List" button → hidden file input (`accept="image/*"`, `capture="environment"`)
-- [ ] If `geminiApiKey` is empty, show inline prompt for user to paste key; save to component state
-- [ ] `fileToBase64(file)` — FileReader → base64 string
-- [ ] `callGeminiWithBackoff(requestBody)` — fetch with exponential backoff (5 retries, delays 1s/2s/4s/8s/16s)
-- [ ] Spinner overlay while API call is in progress
-- [ ] On success: parse JSON from `candidates[0].content.parts[0].text` → set `scannedItems`
-
-**Commit:** `feat(F5a): gemini api scan with exponential backoff`
-
----
-
-## T13 — Scan review modal (F5)
-- [ ] Review modal showing extracted items: room (dropdown, editable), item name (text, editable), value (number, editable)
-- [ ] "Remove" button per row to discard individual extracted items
-- [ ] "Merge into Inventory" button: `addDoc` each item to Firestore, close modal
-- [ ] "Cancel" button discards all scanned items
-
-**Commit:** `feat(F5b): scan review modal and merge into firestore`
-
----
-
 ## T14 — Photo upload — single item (F13)
 - [ ] Camera icon button on each grid row
 - [ ] File input (`accept="image/jpeg,image/png,image/webp,image/heic"`, max 10 MB check)
@@ -198,7 +175,6 @@ Each task maps to one atomic commit. Tasks are ordered by dependency.
 - [ ] Auth loading spinner (full-screen)
 - [ ] Seeding overlay "Setting up your inventory…"
 - [ ] Upload progress bar (dismisses at 100%)
-- [ ] Gemini API error toast/banner
 - [ ] Empty inventory state (no items message + "Add Item" prompt)
 - [ ] Responsive layout check (mobile + desktop)
 
@@ -211,7 +187,6 @@ Each task maps to one atomic commit. Tasks are ordered by dependency.
 - [ ] Add / edit / delete items
 - [ ] Search, room filter, missing prices filter
 - [ ] Analytics dashboard totals correct
-- [ ] Scan a test image → review modal → merge
 - [ ] Upload a photo to one item → thumbnail visible
 - [ ] Select 3 items → attach photo → all 3 show thumbnail
 - [ ] Export CSV → verify 4 columns including Photo URL
@@ -240,5 +215,4 @@ These are documented in full in `docs/MANUAL_STEPS.md`:
 2. Enable Firestore (Native mode), Storage, and Authentication (Google provider)
 3. Generate service account JSON → add as `FIREBASE_SERVICE_ACCOUNT` GitHub Secret
 4. Add all `VITE_FIREBASE_*` values as GitHub Secrets
-5. Add `VITE_GEMINI_API_KEY` as GitHub Secret (or leave empty and paste in-app)
-6. Add Firebase project ID to `.firebaserc`
+5. Add Firebase project ID to `.firebaserc`

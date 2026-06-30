@@ -2,7 +2,7 @@
 
 ## Overview
 
-A premium, single-page home asset and inventory management app. Users sign in with Google, then track every item in their home across 14 named rooms. Data lives in localStorage. Two input paths exist: manual CRUD and AI-powered document scanning via Gemini 2.5 Flash.
+A premium, single-page home asset and inventory management app. Users sign in with Google, then track every item in their home across 14 named rooms. Data lives in localStorage. Items are entered manually, and photos can be attached to records.
 
 ---
 
@@ -14,7 +14,6 @@ A premium, single-page home asset and inventory management app. Users sign in wi
 | F2 | Pre-populated default inventory dataset | P0 |
 | F3 | View inventory — filterable data grid | P0 |
 | F4 | Manual CRUD — add, edit, delete items | P0 |
-| F5 | AI document scan — image/camera → Gemini → review modal → merge | P0 |
 | F6 | Live search and room filter | P0 |
 | F7 | "Show missing prices only" filter | P1 |
 | F8 | Financial analytics dashboard (totals + per-room bar chart) | P1 |
@@ -34,7 +33,6 @@ A premium, single-page home asset and inventory management app. Users sign in wi
 | Styling | Tailwind CSS | Utility-first, no extra CSS files |
 | Icons | Lucide Icons | Clean, consistent icon set |
 | Auth | Firebase Auth (Google) | One-click Google Sign-In, no backend needed |
-| AI | Gemini 2.5 Flash REST API | Structured JSON output, multimodal image input |
 | Persistence | Firebase Firestore | Per-user cloud storage, cross-device sync |
 | Storage | Firebase Storage | Photo uploads scoped per user; free tier |
 | Hosting | Firebase Hosting | Free tier, fast CDN, integrates with Actions |
@@ -51,12 +49,10 @@ Browser
  │    ├── Auth gate (show login if no user)
  │    ├── Inventory state (Firestore real-time listener)
  │    ├── Manual CRUD (add / edit / delete modals)
- │    ├── AI Scan flow (upload → base64 → Gemini API → review modal → merge)
  │    ├── Filter / search bar
  │    ├── Analytics dashboard (totals + bar chart)
  │    └── Export CSV / Reset defaults
- ├── Firebase Storage (photo uploads at users/{uid}/photos/{filename})
- └── External: Gemini REST API (generativelanguage.googleapis.com)
+ └── Firebase Storage (photo uploads at users/{uid}/photos/{filename})
 ```
 
 ---
@@ -67,8 +63,6 @@ Browser
 - **Firestore:** Data stored at `users/{uid}/items/{itemId}` — one document per item, scoped to the signed-in user's UID.
 - **Real-time sync:** `onSnapshot` listener keeps the UI live with Firestore changes.
 - **First-run seed (F12):** On first sign-in, the app checks if `users/{uid}/items` is empty. If so, it batch-writes all 60+ default items to Firestore. A loading state covers the UI during seeding. Users can trigger a manual re-seed at any time via "Reset to Defaults" (clears all items, then re-seeds).
-- **Gemini API key:** Stored in `.env` as `VITE_GEMINI_API_KEY`; app falls back gracefully if empty (user pastes key in-app).
-- **Retry logic:** Exponential backoff — 5 attempts, delays 1s / 2s / 4s / 8s / 16s.
 - **Firestore rules:** Deployed via GitHub Actions alongside hosting; users can only read/write their own data.
 - **Never deploy locally:** All deploys via GitHub Actions on push to `main`.
 
@@ -94,7 +88,7 @@ Browser
 1. Await PLAN.md approval.
 2. Write docs/REQUIREMENTS.md (all 11 features, full ACs + test plans).
 3. Write docs/DESIGN.md with architecture diagram.
-4. Write docs/SPECS.md (data models, localStorage schema, Gemini API spec).
+4. Write docs/SPECS.md (data models, localStorage schema).
 5. Write docs/TASKS.md (atomic tasks in dependency order).
 6. Implement App.jsx end-to-end.
 7. Set up GitHub Actions deploy workflow.

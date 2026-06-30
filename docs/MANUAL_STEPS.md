@@ -83,7 +83,6 @@ Add each of these:
 | `VITE_FIREBASE_STORAGE_BUCKET` | Firebase web app config |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase web app config |
 | `VITE_FIREBASE_APP_ID` | Firebase web app config |
-| `VITE_GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/app/apikey) — or leave empty and paste in-app |
 | `FIREBASE_SERVICE_ACCOUNT` | Paste the entire contents of the service account JSON file |
 
 ---
@@ -106,7 +105,6 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
 VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
-VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
 Then run:

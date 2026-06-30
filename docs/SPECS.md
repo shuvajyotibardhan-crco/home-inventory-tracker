@@ -70,15 +70,6 @@
 }
 ```
 
-### ScannedItem (transient — review modal state only, never persisted directly)
-```
-{
-  room: string        // Parsed from Gemini response
-  name: string        // Parsed item name
-  value: number|null  // Parsed value or null
-}
-```
-
 ### RoomStat (derived — computed in useMemo, never stored)
 ```
 {
@@ -152,60 +143,7 @@ Backyard | Front Yard | Front Porch
 
 ---
 
----
-
-## API Endpoints
-
-### Gemini 2.5 Flash — Document Scan
-
-**URL:** `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`
-
-**Method:** POST
-
-**Request body:**
-```json
-{
-  "contents": [
-    {
-      "parts": [
-        {
-          "inlineData": { "mimeType": "<file.type>", "data": "<base64-image>" }
-        },
-        {
-          "text": "Extract every item visible in this image. Return ONLY a JSON array with objects: {\"name\": string, \"room\": string (one of the 14 canonical rooms), \"value\": number|null}"
-        }
-      ]
-    }
-  ],
-  "generationConfig": {
-    "responseMimeType": "application/json"
-  }
-}
-```
-
-**Success response:** HTTP 200 — `candidates[0].content.parts[0].text` contains a JSON string matching the schema above.
-
-**Error handling:** Non-200 responses trigger the retry loop. After 5 failures, surface an error message to the user.
-
----
-
 ## Algorithms
-
-### Exponential Backoff (Gemini API calls)
-```
-async function callGeminiWithBackoff(requestBody):
-  delays = [1000, 2000, 4000, 8000, 16000]
-  for attempt in 0..4:
-    try:
-      response = await fetch(GEMINI_URL, { method: POST, body: requestBody })
-      if response.ok:
-        return await response.json()
-      else:
-        throw Error(response.status)
-    catch error:
-      if attempt == 4: throw error
-      await sleep(delays[attempt])
-```
 
 ### initFirstHouse (first sign-in migration/creation)
 ```
@@ -400,7 +338,6 @@ filteredItems = items
 | `VITE_FIREBASE_STORAGE_BUCKET` | `.env` | Firebase Storage bucket |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `.env` | Firebase messaging sender ID |
 | `VITE_FIREBASE_APP_ID` | `.env` | Firebase app ID |
-| `VITE_GEMINI_API_KEY` | `.env` | Gemini API key (falls back to empty string; user prompted in-app) |
 
 ---
 
@@ -539,7 +476,6 @@ service firebase.storage {
 - The `invites` collection is readable by all signed-in users so the app can query by `inviteeEmail`. The delete rule limits who can remove an invite to the invitee or the inviter.
 - User profile documents (`users/{uid}`) are readable by all signed-in users. This is intentional — `sendInvite` must look up invitees by email. Only the owner can write their own profile doc.
 - Storage rules for house-scoped photos call `firestore.exists()` to verify membership — this cross-service check ensures photo access and Firestore membership stay in sync.
-- The Gemini API key is injected at build time via `VITE_GEMINI_API_KEY`. It is visible in the built JS bundle. Acceptable for a personal-use app; for multi-tenant production use, proxy through a Cloud Function.
 - `.env` is in `.gitignore` — credentials are never committed.
 - Photo files remain in Storage when `photoUrl` is cleared from Firestore (no cascading delete). Storage costs remain negligible for personal use.
 - The Firebase service account used in CI must have the "Service Usage Consumer" IAM role to deploy Firestore and Storage rules — see `docs/MANUAL_STEPS.md` step 10.

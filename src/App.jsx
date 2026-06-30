@@ -139,36 +139,6 @@ const MIGRATION_ITEMS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result.split(',')[1])
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-async function callGeminiWithBackoff(apiKey, requestBody) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`
-  const delays = [1000, 2000, 4000, 8000, 16000]
-  let lastError
-  for (let i = 0; i <= delays.length; i++) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      })
-      if (!res.ok) throw new Error(`Gemini API ${res.status}: ${await res.text()}`)
-      return await res.json()
-    } catch (err) {
-      lastError = err
-      if (i < delays.length) await new Promise(r => setTimeout(r, delays[i]))
-    }
-  }
-  throw lastError
-}
-
 function exportCSV(items) {
   const header = ['Room', 'Item Name', 'Estimated Value', 'Photo URL']
   const rows = items.map(i => [i.room, i.name, i.value ?? '', i.photoUrl || ''])
@@ -239,12 +209,6 @@ export default function App() {
   const [formError, setFormError] = useState('')
   const [deletingItem, setDeletingItem] = useState(null)
 
-  const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '')
-  const [showKeyInput, setShowKeyInput] = useState(false)
-  const [scanning, setScanning] = useState(false)
-  const [scanError, setScanError] = useState('')
-  const [scannedItems, setScannedItems] = useState(null)
-  const scanInputRef = useRef(null)
   const [uploadProgress, setUploadProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
   const galleryInputRef = useRef(null)
@@ -253,7 +217,6 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState(new Set())
   const [viewerUrl, setViewerUrl] = useState(null)
   const [viewerItemId, setViewerItemId] = useState(null)
-  const [merging, setMerging] = useState(false)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   // ── Auth listener ────────────────────────────────────────────────────────────
@@ -366,7 +329,6 @@ export default function App() {
     }, err => {
       console.error('Items error:', err)
       setDataLoading(false)
-      setScanError(`Firestore error: ${err.message}`)
     })
   }, [user, activeHouseId])
 
@@ -650,49 +612,6 @@ export default function App() {
     }))
   }, [items, dashboardStats.total])
 
-  // ── AI scan ───────────────────────────────────────────────────────────────────
-
-  async function handleScanFile(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!geminiApiKey) { setShowKeyInput(true); return }
-    setScanning(true); setScanError('')
-    try {
-      const base64 = await fileToBase64(file)
-      const data = await callGeminiWithBackoff(geminiApiKey, {
-        contents: [{ parts: [
-          { inlineData: { mimeType: file.type, data: base64 } },
-          { text: `You are a home inventory assistant. Extract every item visible in this image or document.
-Return ONLY a JSON array (no markdown, no prose) with objects:
-- "name": string
-- "room": string (one of: ${ROOMS.join(', ')})
-- "value": number or null (estimated USD value if visible)
-
-Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
-        ]}],
-        generationConfig: { responseMimeType: 'application/json' },
-      })
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-      const parsed = JSON.parse(text)
-      setScannedItems(parsed.map((item, i) => ({ ...item, _id: i, room: ROOMS.includes(item.room) ? item.room : ROOMS[0] })))
-    } catch (err) {
-      setScanError(`Scan failed: ${err.message}`)
-    } finally {
-      setScanning(false); e.target.value = ''
-    }
-  }
-
-  async function handleMergeScan() {
-    if (!scannedItems?.length) return
-    setMerging(true)
-    for (const item of scannedItems) {
-      await addDoc(collection(db, 'houses', activeHouseId, 'items'), {
-        name: item.name, room: item.room, value: item.value ?? null, photoUrl: null, createdAt: serverTimestamp(),
-      })
-    }
-    setScannedItems(null); setMerging(false)
-  }
-
   // ── Photos ────────────────────────────────────────────────────────────────────
 
   async function uploadPhoto(file, itemIds = []) {
@@ -764,7 +683,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
     function onKey(e) {
       if (e.key !== 'Escape') return
       setShowAddModal(false); setDeletingItem(null); setConfirmBulkDelete(false)
-      setScannedItems(null); setViewerUrl(null); setViewerItemId(null)
+      setViewerUrl(null); setViewerItemId(null)
       setLinkingItemIds(null); setShowProfileModal(false); setShowCreateHouseModal(false)
       setShowShareModal(false); setShowHouseSwitcher(false)
     }
@@ -1058,10 +977,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
                     </button>
                   </>
                 )}
-                <button onClick={() => scanInputRef.current?.click()}
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
-                  <Search className="w-4 h-4" /> Scan
-                </button>
                 <button onClick={() => exportCSV(items)}
                   className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition">
                   <Download className="w-4 h-4" /> Export
@@ -1073,28 +988,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
               </div>
             </div>
 
-            {showKeyInput && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3 items-start">
-                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-amber-800 mb-2">Paste your Gemini API key to enable scanning</p>
-                  <div className="flex gap-2">
-                    <input id="gemini-key-input" type="text" placeholder="AIza…"
-                      className="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300" />
-                    <button onClick={() => { setGeminiApiKey(document.getElementById('gemini-key-input').value); setShowKeyInput(false) }}
-                      className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm">Save</button>
-                  </div>
-                </div>
-                <button onClick={() => setShowKeyInput(false)}><X className="w-4 h-4 text-amber-600" /></button>
-              </div>
-            )}
-
-            {scanError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />{scanError}
-                <button onClick={() => setScanError('')} className="ml-auto"><X className="w-4 h-4" /></button>
-              </div>
-            )}
             {uploadError && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />{uploadError}
@@ -1102,21 +995,21 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
               </div>
             )}
 
-            {(scanning || dataLoading) && (
+            {dataLoading && (
               <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center justify-center gap-3">
                 <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
-                <span className="text-slate-600 font-medium">{scanning ? 'Analysing with Gemini…' : 'Loading inventory…'}</span>
+                <span className="text-slate-600 font-medium">Loading inventory…</span>
               </div>
             )}
 
-            {!dataLoading && !scanning && filteredItems.length === 0 ? (
+            {!dataLoading && filteredItems.length === 0 ? (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
                 <p className="text-slate-400 text-sm mb-3">No items match your filters.</p>
                 <button onClick={openAdd} className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1 mx-auto">
                   <Plus className="w-4 h-4" /> Add your first item
                 </button>
               </div>
-            ) : !dataLoading && !scanning && (
+            ) : !dataLoading && (
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1203,7 +1096,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
       </main>
 
       {/* ── Hidden inputs ──────────────────────────────────────────────────────── */}
-      <input ref={scanInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanFile} />
       <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple className="hidden"
         onChange={e => { handleGalleryFiles([...e.target.files]); e.target.value = '' }} />
       <input ref={pickerInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={handlePickerUpload} />
@@ -1483,40 +1375,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
         </Modal>
       )}
 
-
-      {/* ── Scan Review Modal ──────────────────────────────────────────────────── */}
-      {scannedItems && (
-        <Modal title={`Review Scanned Items (${scannedItems.length})`} onClose={() => setScannedItems(null)} wide>
-          <div className="space-y-2 max-h-80 overflow-y-auto pr-1 mb-4">
-            {scannedItems.map((item, idx) => (
-              <div key={item._id} className="flex gap-2 items-center bg-slate-50 rounded-lg p-2">
-                <input type="text" value={item.name}
-                  onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, name: e.target.value } : it))}
-                  className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                <select value={item.room}
-                  onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, room: e.target.value } : it))}
-                  className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                  {ROOMS.map(r => <option key={r}>{r}</option>)}
-                </select>
-                <input type="number" value={item.value ?? ''}
-                  onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, value: e.target.value === '' ? null : parseFloat(e.target.value) } : it))}
-                  placeholder="$ value"
-                  className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                <button onClick={() => setScannedItems(prev => prev.filter((_, i) => i !== idx))}>
-                  <X className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setScannedItems(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-            <button onClick={handleMergeScan} disabled={merging || scannedItems.length === 0}
-              className="px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-60">
-              {merging && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Merge into Inventory
-            </button>
-          </div>
-        </Modal>
-      )}
 
       {/* ── Photo Viewer ───────────────────────────────────────────────────────── */}
       {viewerUrl && (

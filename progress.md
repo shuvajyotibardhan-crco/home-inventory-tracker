@@ -3,7 +3,7 @@
 - **Current Branch:** main
 
 ## Architecture (current)
-- Stack: React 18 + Vite + Tailwind + Firebase Auth/Firestore/Storage + Gemini 2.5 Flash
+- Stack: React 18 + Vite + Tailwind + Firebase Auth/Firestore/Storage
 - Single `src/App.jsx` — all state/logic/UI
 - Data scoped to houses: `houses/{houseId}/items`, `houses/{houseId}/photos`, `houses/{houseId}/members`
 - User profiles: `users/{uid}` with `houseIds[]`
@@ -17,7 +17,6 @@
 - F2 First-run house creation + one-time migration (deletes placeholder data, writes 69 real items for 158 N Edge Cliff St)
 - F3 Inventory data grid
 - F4 Manual CRUD with room combobox (select existing or type new room)
-- F5 AI document scan (Gemini 2.5 Flash, exponential backoff)
 - F6 Live search + room filter
 - F7 Missing prices filter
 - F8 Financial analytics dashboard
@@ -38,7 +37,7 @@ Living Room, Dining Room, Kitchen, Garage, Backyard, Front Yard, Front Porch
   Until added, **manually publish Firestore rules in Firebase Console** before
   first sign-in so initFirstHouse can create the houses/ collection.
   See docs/MANUAL_STEPS.md step 10.
-- VITE_GEMINI_API_KEY GitHub Secret is empty — user must paste key in-app at runtime.
+- AI document scanning (Gemini) has been removed from the app. The app is now manual CRUD plus photo upload only.
 
 ## Next Immediate Step
 - Publish Firestore rules in Firebase Console (paste firestore.rules content → Publish)

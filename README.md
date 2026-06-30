@@ -1,6 +1,6 @@
 # Home Inventory Tracker
 
-A premium hybrid-input home asset and inventory management app. Track every item in your home with manual editing or AI-powered document scanning via Gemini.
+A premium home asset and inventory management app. Track every item in your home with manual editing and photo uploads.
 
 ## Tech Stack
 
@@ -8,7 +8,6 @@ A premium hybrid-input home asset and inventory management app. Track every item
 - Tailwind CSS
 - Lucide Icons
 - Firebase Auth (Google Sign-In)
-- Gemini 2.5 Flash API (AI document scanning)
 - localStorage (persistence)
 
 ## Setup
@@ -22,7 +21,6 @@ A premium hybrid-input home asset and inventory management app. Track every item
 
 - Google Sign-In
 - Manual CRUD — add, edit, delete inventory items
-- AI scan — photograph a paper list and auto-parse items via Gemini
 - Live search and room filter
 - Financial analytics dashboard with per-room value breakdown
 - CSV export

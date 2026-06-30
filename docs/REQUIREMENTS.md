@@ -2,7 +2,7 @@
 
 ## Overview
 
-A premium single-page home asset and inventory management app for homeowners who want a clear financial picture of their household items. Users sign in with Google, then manage one or more houses. Each house has its own inventory, and houses can be shared with other users by email. Inventory is managed across 14 named rooms per house. AI-powered document scanning, photo uploads, CSV export, and a financial analytics dashboard round out the feature set. All data lives in Firestore, scoped to houses rather than individual users.
+A premium single-page home asset and inventory management app for homeowners who want a clear financial picture of their household items. Users sign in with Google, then manage one or more houses. Each house has its own inventory, and houses can be shared with other users by email. Inventory is managed across 14 named rooms per house. Photo uploads, CSV export, and a financial analytics dashboard round out the feature set. All data lives in Firestore, scoped to houses rather than individual users.
 
 ## Scope
 
@@ -11,7 +11,6 @@ A premium single-page home asset and inventory management app for homeowners who
 - Full CRUD inventory management per house
 - Multi-house management (create, switch, edit address)
 - House sharing — invite collaborators by email; pending invite flow for unregistered users
-- AI-powered document scanning (Gemini 2.5 Flash)
 - Filtering, search, and analytics dashboard
 - CSV export
 - Firestore persistence with real-time sync
@@ -120,32 +119,9 @@ A premium single-page home asset and inventory management app for homeowners who
 
 ---
 
-## Feature 5 — AI Document Scan
+## Feature 5 — *(Removed — AI document scan feature retired)*
 
-**User story:** As a user, I want to photograph a handwritten or printed item list and have the app extract the items automatically so that I don't have to type everything manually.
-
-**Acceptance Criteria:**
-1. A "Scan Paper List" button shall open a file input accepting images and supporting live camera capture on mobile.
-2. The app shall convert the selected image to base64 and send it to the Gemini 2.5 Flash API endpoint with the configured API key.
-3. The Gemini request shall include a JSON schema in `generationConfig` specifying the output as an array of `{ room: string, item: string, value: number | null }` objects.
-4. The app shall implement exponential backoff retrying up to 5 times (delays: 1s, 2s, 4s, 8s, 16s) on network or API errors.
-5. A review modal shall display the extracted items before any data is saved, showing room, item name, and value fields that are all editable.
-6. The user shall be able to delete individual extracted items from the review list before merging.
-7. Clicking "Merge into Inventory" shall write all reviewed items to Firestore and close the modal.
-8. If the API call fails after all retries, the app shall display a clear error message.
-9. If the Gemini API key is empty, the app shall prompt the user to enter it before scanning.
-
-**Test Plan:**
-
-| Step | Expected Result |
-|------|----------------|
-| Click "Scan Paper List", select a photo of a written list | Spinner shown while API processes |
-| API responds successfully | Review modal opens with extracted items |
-| Edit a room in the review modal | Room field updates inline |
-| Delete one extracted item in the review modal | Item removed from the review list only |
-| Click "Merge into Inventory" | All remaining reviewed items added to Firestore and grid |
-| Disconnect network, attempt scan | App retries 5 times then shows error message |
-| API key is empty | Prompt shown to enter the key before scanning |
+The AI-powered document scan feature (Gemini API) has been removed. The app now supports manual CRUD and photo uploads only — there is no automated item extraction from images.
 
 ---
 

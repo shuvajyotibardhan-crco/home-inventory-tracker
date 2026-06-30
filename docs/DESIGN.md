@@ -2,7 +2,7 @@
 
 ## High-Level Overview
 
-A React single-page application with no traditional backend. Firebase handles auth, data storage, and file storage. The entire UI and application logic lives in `src/App.jsx`. Data is organized around houses rather than users — each house has its own items, photos, and member list, and a user can belong to multiple houses. Gemini 2.5 Flash processes scanned document images and returns structured JSON via a REST call made directly from the browser. The app is hosted on Firebase Hosting and deployed automatically via GitHub Actions on every push to `main`.
+A React single-page application with no traditional backend. Firebase handles auth, data storage, and file storage. The entire UI and application logic lives in `src/App.jsx`. Data is organized around houses rather than users — each house has its own items, photos, and member list, and a user can belong to multiple houses. The app is hosted on Firebase Hosting and deployed automatically via GitHub Actions on every push to `main`.
 
 ---
 
@@ -40,11 +40,6 @@ The entire application. It is divided into logical sections within a single file
 - `handleUnlinkPhoto(itemId)` calls `updateDoc` to set `photoUrl` to `null`; the Storage file and gallery record are left intact.
 - `handleDeletePhoto(photoId)` deletes the Firestore metadata document from `houses/{activeHouseId}/photos`; the Storage file and any item `photoUrl` links remain.
 
-**AI scan layer**
-- `handleScanImage(file)` reads the file as base64, builds the Gemini API request body (with JSON schema in `generationConfig`), and calls `callGeminiWithBackoff`.
-- `callGeminiWithBackoff` wraps the fetch in a retry loop: up to 5 attempts, delays `[1000, 2000, 4000, 8000, 16000]` ms.
-- On success, parsed items are placed in `scannedItems` state and the review modal opens.
-
 **Sharing / invite layer**
 - `sendInvite(email)` queries `users` by email. If found, adds the user directly to `houses/{houseId}/members` and appends the house to their `houseIds`. If not found, creates an `invites/{inviteId}` document (`inviterUid`, `houseId`, `houseName`, `inviteeEmail`).
 - On sign-in, the app queries `invites` where `inviteeEmail == user.email` and stores results in `pendingInvites` state.
@@ -68,7 +63,6 @@ The entire application. It is divided into logical sections within a single file
 - `allRooms` — derived (useMemo): ROOMS constant + any custom room names already present in the house's items. Used as the `<datalist>` source for the room combobox in the Add/Edit modal.
 - `linkingItemIds` — array of item IDs awaiting a photo selection in the picker modal; `null` when closed.
 - `isDragging` — boolean, true while a drag is active over the Photos tab upload zone.
-- `scannedItems` — array of items parsed from Gemini, held pending review.
 - `uploadProgress` — number 0–100 for the active upload, or `null` when idle.
 - `viewerUrl` / `viewerItemId` — URL and item ID for the full-size photo viewer modal.
 - Modal states: `showAddModal`, `showResetModal`, `showProfileModal`, `showCreateHouseModal`, `showShareModal`, `deletingItem`, `linkingItemIds`, `viewerUrl`.
@@ -100,12 +94,6 @@ All inventory data (items, photos, members) is stored under `houses/{houseId}/` 
 ### Central photo gallery with item linking
 Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage at `houses/{houseId}/photos/` and a lightweight metadata document in `houses/{houseId}/photos`. Items don't own photos — they hold a reference URL. The same photo can link to any number of items, and deleting a gallery record doesn't cascade to items.
 
-### Gemini JSON schema enforcement
-Setting `response_mime_type: "application/json"` and `response_schema` in `generationConfig` removes the need for fragile regex parsing. The model is constrained to return a valid array of `{ room, item, value }` objects.
-
-### Exponential backoff
-Mobile networks and the Gemini API are both susceptible to transient errors. Five retries with doubling delays handle temporary outages without bombarding the API.
-
 ### No backend / no Cloud Functions
 Auth, storage, and database are all handled by Firebase client SDKs. There's nothing server-side to maintain, scale, or secure beyond Firestore rules.
 
@@ -121,7 +109,6 @@ Auth, storage, and database are all handled by Firebase client SDKs. There's not
 | Auth | Firebase Auth (Google provider) | One-click Google Sign-In |
 | Database | Firebase Firestore | Real-time sync, per-user security rules |
 | File storage | Firebase Storage | Photo uploads, UID-scoped access rules |
-| AI | Gemini 2.5 Flash REST API | Multimodal image input, structured JSON output |
 | Hosting | Firebase Hosting | CDN-backed, integrates with GitHub Actions |
 | CI/CD | GitHub Actions | Automated build + deploy on push to `main` |
 
@@ -146,7 +133,6 @@ All Firebase config values are stored as GitHub Actions Secrets and injected as 
 |-----------|--------|
 | Single file | All UI and logic in `App.jsx` — no component split-outs per spec |
 | 10 MB photo limit | Enforced client-side; Firebase Storage has no hard cap but large files hurt UX |
-| Gemini API key | Must be set in `.env`; the app degrades gracefully (prompts user) if missing |
 | Photo deletion from Storage | Removing a photo from an item only clears the URL in Firestore — the file remains in Storage (avoids accidental deletion when same photo is linked to multiple items) |
 | Offline support | No offline mode; Firestore `onSnapshot` requires connectivity for the initial load |
 | Browser compatibility | Requires a modern browser with ES2020 support; no IE11 |
