@@ -115,27 +115,21 @@ npm run dev
 
 ---
 
-## 10. Grant the Service Account the Roles Rules Deploy Needs
+## 10. Grant the Service Account "Firebase Admin"
 
-Two separate IAM roles are required, for two separate reasons. Both go on the same service account.
+The GitHub Actions service account needs the **Firebase Admin** role (`roles/firebase.admin`) to deploy Firestore and Storage rules. Without it, the rules deploy step in `.github/workflows/deploy.yml` fails — and because that step runs with `continue-on-error: true`, the failure does not turn the overall workflow red. Always check the step's own log to confirm it actually succeeded, not just the workflow status.
 
-**Service Usage Consumer** — lets the CLI check whether required APIs are enabled before deploying Firestore and Storage rules.
+Narrower roles (Service Usage Consumer, Cloud Storage for Firebase Admin) cover part of what `firebase deploy --only firestore:rules,storage` needs — checking enabled APIs, looking up the default Storage bucket — but not the rules-compilation test call to `firebaserules.googleapis.com`, which throws a separate 403. Firebase Admin is the superset that covers all of it in one grant, so it's what this project uses instead of chasing each narrow permission individually.
 
 1. Go to [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam)
 2. Make sure the right project (`home-inventory-tracker-f94b1`) is selected in the top bar
 3. Find the row for `firebase-adminsdk-fbsvc@home-inventory-tracker-f94b1.iam.gserviceaccount.com`
 4. Click the pencil (Edit) icon on that row
 5. Click **+ Add another role**
-6. Search for **Service Usage Consumer** and select it
+6. Search for **Firebase Admin** and select it
 7. Click **Save**
 
-**Cloud Storage for Firebase Admin** — lets the CLI look up the project's default Storage bucket before deploying `storage.rules`. Without it, the Storage rules deploy step fails with `Permission 'firebasestorage.defaultBucket.get' denied`, even though Firestore rules deploy fine. The Firestore- and Storage-rules deploy step in `.github/workflows/deploy.yml` runs with `continue-on-error: true`, so this failure does not turn the workflow red — check the step's own log to confirm it actually succeeded.
-
-1. On the same service account row, click **+ Add another role** again
-2. Search for **Cloud Storage for Firebase Admin** (listed as Beta — that's expected, use it anyway) and select it
-3. Click **Save**
-
-After saving both roles, the next push to `main` will deploy Firestore and Storage rules automatically.
+After saving, the next push to `main` will deploy Firestore and Storage rules automatically.
 
 ---
 

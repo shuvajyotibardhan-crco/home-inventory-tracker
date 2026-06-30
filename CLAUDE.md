@@ -23,7 +23,7 @@ A premium home asset and inventory management SPA. Users sign in with Google, th
 - GitHub Actions handles all deploys — never run `firebase deploy` locally
 - Architecture diagram lives at `docs/architecture.drawio`
 - Global rules file: `/Users/shuvajyotibardhan/Projects/.claude_rules.md`
-- Firestore/Storage rules deploy requires "Service Usage Consumer" IAM role on the service account — see `docs/MANUAL_STEPS.md` step 10
+- Firestore/Storage rules deploy requires "Firebase Admin" IAM role on the service account — see `docs/MANUAL_STEPS.md` step 10
 
 ## GitHub Repo
 https://github.com/shuvajyotibardhan-crco/home-inventory-tracker
