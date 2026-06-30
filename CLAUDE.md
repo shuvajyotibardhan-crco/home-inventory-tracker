@@ -24,6 +24,7 @@ A premium home asset and inventory management SPA. Users sign in with Google, th
 - Architecture diagram lives at `docs/architecture.drawio`
 - Global rules file: `/Users/shuvajyotibardhan/Projects/.claude_rules.md`
 - Firestore/Storage rules deploy requires "Firebase Admin" IAM role on the service account — see `docs/MANUAL_STEPS.md` step 10
+- `storage.rules` uses cross-service `firestore.exists()` for house-membership checks — this needs a separate one-time grant of "Firebase Rules Firestore Service Agent" to the `gcp-sa-firebasestorage` service agent, since `--non-interactive` deploys skip the CLI's normal consent prompt — see `docs/MANUAL_STEPS.md` step 11
 
 ## GitHub Repo
 https://github.com/shuvajyotibardhan-crco/home-inventory-tracker

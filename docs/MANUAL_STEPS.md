@@ -133,7 +133,26 @@ After saving, the next push to `main` will deploy Firestore and Storage rules au
 
 ---
 
-## 11. Trigger First Deployment
+## 11. Grant the Firebase Storage Service Agent Access to Firestore (cross-service rules)
+
+`storage.rules` calls `firestore.exists(...)` to check house membership before allowing a photo read/write. That cross-service call needs its own one-time IAM grant on a separate, Google-managed service agent — distinct from the GitHub Actions service account above.
+
+Normally the Firebase CLI prompts you to accept this grant the first time you publish rules containing `firestore.get()`/`firestore.exists()`. Our deploy runs `firebase deploy --non-interactive`, which skips that prompt, so the grant never happens automatically. Without it, every `firestore.exists()` call silently evaluates to `false`, and uploads fail with `storage/unauthorized` even though the rules themselves deployed correctly.
+
+1. Go to [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam)
+2. Make sure the right project (`home-inventory-tracker-f94b1`) is selected in the top bar
+3. Check **"Include Google-provided role grants"** near the top of the page — this service agent is hidden otherwise
+4. Find the row for `service-<project-number>@gcp-sa-firebasestorage.iam.gserviceaccount.com` (auto-created by Firebase; you don't need to look up the project number yourself)
+5. Click the pencil (Edit) icon on that row
+6. Click **+ Add another role**
+7. Search for **Firebase Rules Firestore Service Agent** and select it
+8. Click **Save**
+
+This is a one-time grant — it survives future rules deploys, even non-interactive ones.
+
+---
+
+## 12. Trigger First Deployment
 
 Once all secrets are set:
 ```bash
