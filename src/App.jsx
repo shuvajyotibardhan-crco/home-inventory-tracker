@@ -59,11 +59,83 @@ const googleProvider = new GoogleAuthProvider()
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROOMS = [
-  'Living Room', 'Kitchen', 'Master Bedroom', 'Bedroom 2', 'Bedroom 3',
-  'Bathroom', 'En-suite', 'Dining Room', 'Study / Office', 'Garage',
-  'Utility Room', 'Loft / Attic', 'Garden / Shed', 'Hallway',
+  'Laundry Room', 'Kids Room', 'Guest Room', 'Flex Room', 'Master Bed',
+  'Loft', 'Living Room', 'Dining Room', 'Kitchen', 'Garage',
+  'Backyard', 'Front Yard', 'Front Porch',
 ]
 
+// Real inventory for 158 N Edge Cliff St — used once during initFirstHouse migration
+const MIGRATION_ITEMS = [
+  { name: 'Washer', room: 'Laundry Room', value: null },
+  { name: 'Dryer', room: 'Laundry Room', value: null },
+  { name: 'Bed', room: 'Kids Room', value: 500 },
+  { name: 'L Shaped Table', room: 'Kids Room', value: 350 },
+  { name: 'Monitor', room: 'Kids Room', value: null },
+  { name: 'Book Case', room: 'Kids Room', value: 150 },
+  { name: 'Wall Decor', room: 'Kids Room', value: 200 },
+  { name: 'Books', room: 'Kids Room', value: 500 },
+  { name: 'Bed', room: 'Guest Room', value: 1500 },
+  { name: 'Table', room: 'Guest Room', value: 100 },
+  { name: 'Cot', room: 'Guest Room', value: 250 },
+  { name: 'Lamp', room: 'Guest Room', value: 20 },
+  { name: 'Embroidery Wall Hanging', room: 'Flex Room', value: 200 },
+  { name: 'Antique Entry Table', room: 'Flex Room', value: 500 },
+  { name: 'Trundle Bed', room: 'Flex Room', value: 1000 },
+  { name: 'L-shaped Table', room: 'Flex Room', value: 250 },
+  { name: 'Monitor', room: 'Flex Room', value: null },
+  { name: 'Bed', room: 'Master Bed', value: 800 },
+  { name: 'Dresser with Mirror', room: 'Master Bed', value: 500 },
+  { name: 'Tall Dresser', room: 'Master Bed', value: 750 },
+  { name: 'Side Table', room: 'Master Bed', value: 250 },
+  { name: 'Lamp', room: 'Master Bed', value: 100 },
+  { name: 'Couch', room: 'Master Bed', value: 300 },
+  { name: 'Reclining Sofa', room: 'Loft', value: 1000 },
+  { name: 'Temple', room: 'Loft', value: 500 },
+  { name: 'Marble Vases', room: 'Loft', value: 200 },
+  { name: 'Wood Cabinet', room: 'Loft', value: 350 },
+  { name: 'Brass Objects', room: 'Loft', value: 500 },
+  { name: 'TV', room: 'Loft', value: 150 },
+  { name: 'Embroidered Wall Hanging', room: 'Loft', value: 150 },
+  { name: 'Wall Decor', room: 'Loft', value: 350 },
+  { name: 'Lamp', room: 'Loft', value: 60 },
+  { name: 'TV Stand', room: 'Loft', value: 150 },
+  { name: 'Sofa Set', room: 'Living Room', value: 1000 },
+  { name: 'Centre & Side Table', room: 'Living Room', value: 750 },
+  { name: 'Television', room: 'Living Room', value: 750 },
+  { name: 'Light Fixture', room: 'Living Room', value: 150 },
+  { name: 'Fireplace', room: 'Living Room', value: 500 },
+  { name: 'Wall Decor', room: 'Living Room', value: 750 },
+  { name: 'Lamp Shades', room: 'Living Room', value: 350 },
+  { name: 'Collectives Shelf', room: 'Living Room', value: 200 },
+  { name: 'Collectives', room: 'Living Room', value: 500 },
+  { name: 'Dining Table & Chairs', room: 'Dining Room', value: 1200 },
+  { name: 'Buffet', room: 'Dining Room', value: 600 },
+  { name: 'Crockery/cups/glasses', room: 'Dining Room', value: 500 },
+  { name: 'Crockery', room: 'Kitchen', value: 2000 },
+  { name: 'Cuisinart Toaster', room: 'Kitchen', value: 40 },
+  { name: 'Ninja Blender', room: 'Kitchen', value: 200 },
+  { name: 'Instapots', room: 'Kitchen', value: 150 },
+  { name: 'Airfryer', room: 'Kitchen', value: 110 },
+  { name: 'Dishwasher', room: 'Kitchen', value: null },
+  { name: 'Fridge', room: 'Kitchen', value: null },
+  { name: 'Microwave', room: 'Kitchen', value: null },
+  { name: 'GX', room: 'Garage', value: 75000 },
+  { name: 'Nissan Versa', room: 'Garage', value: 15000 },
+  { name: 'Shoes', room: 'Garage', value: 750 },
+  { name: 'Snow Blower', room: 'Garage', value: 250 },
+  { name: 'Fridge', room: 'Garage', value: 200 },
+  { name: 'Pergola', room: 'Backyard', value: 3000 },
+  { name: 'Patio Set', room: 'Backyard', value: 800 },
+  { name: 'Artificial Grass', room: 'Backyard', value: 10000 },
+  { name: 'Dog Gates', room: 'Backyard', value: 600 },
+  { name: 'Trees', room: 'Backyard', value: 3000 },
+  { name: 'Bar-b-cue', room: 'Backyard', value: 250 },
+  { name: 'Landscaping', room: 'Backyard', value: 15000 },
+  { name: 'Landscaping', room: 'Front Yard', value: 10000 },
+  { name: 'Swing Chair', room: 'Front Porch', value: 250 },
+  { name: 'Decor', room: 'Front Porch', value: 250 },
+  { name: 'Ring Camera', room: 'Front Porch', value: null },
+]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -355,21 +427,28 @@ export default function App() {
       })
 
       if (hasOldData) {
-        // Migrate items from old path
-        const batch = writeBatch(db)
-        oldItemsSnap.docs.forEach(d => {
-          batch.set(doc(collection(db, 'houses', houseId, 'items')), d.data())
-          batch.delete(d.ref)
-        })
-        await batch.commit()
-        // Migrate photo metadata
-        if (!oldPhotosSnap.empty) {
-          const batch2 = writeBatch(db)
-          oldPhotosSnap.docs.forEach(d => {
-            batch2.set(doc(collection(db, 'houses', houseId, 'photos')), d.data())
-            batch2.delete(d.ref)
+        // Delete whatever was in the old path (incorrect placeholder data) and
+        // write the real inventory for 158 N Edge Cliff St instead
+        const deleteBatch = writeBatch(db)
+        oldItemsSnap.docs.forEach(d => deleteBatch.delete(d.ref))
+        await deleteBatch.commit()
+
+        const seedBatch = writeBatch(db)
+        MIGRATION_ITEMS.forEach(item => {
+          seedBatch.set(doc(collection(db, 'houses', houseId, 'items')), {
+            ...item, photoUrl: null, createdAt: serverTimestamp(),
           })
-          await batch2.commit()
+        })
+        await seedBatch.commit()
+
+        // Migrate photo metadata if any
+        if (!oldPhotosSnap.empty) {
+          const photoBatch = writeBatch(db)
+          oldPhotosSnap.docs.forEach(d => {
+            photoBatch.set(doc(collection(db, 'houses', houseId, 'photos')), d.data())
+            photoBatch.delete(d.ref)
+          })
+          await photoBatch.commit()
         }
       }
 
