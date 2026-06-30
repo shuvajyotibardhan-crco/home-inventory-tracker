@@ -61,7 +61,7 @@ The entire application. It is divided into logical sections within a single file
 - `pendingInvites` — array of `invites` docs addressed to the current user's email.
 - `user` — Firebase Auth user object or `null`.
 - `authLoading` — boolean, true while `onAuthStateChanged` is resolving.
-- `seeding` — boolean, true while the first-run batch write is in progress.
+- `seeding` — boolean, true while the first-run migration is in progress.
 - `searchText`, `roomFilter`, `missingPricesOnly` — filter state.
 - `selectedItemIds` — Set of item IDs checked for multi-item photo linking.
 - `linkingItemIds` — array of item IDs awaiting a photo selection in the picker modal; `null` when closed.

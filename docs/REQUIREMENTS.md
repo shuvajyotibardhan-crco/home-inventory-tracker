@@ -13,9 +13,9 @@ A premium single-page home asset and inventory management app for homeowners who
 - House sharing — invite collaborators by email; pending invite flow for unregistered users
 - AI-powered document scanning (Gemini 2.5 Flash)
 - Filtering, search, and analytics dashboard
-- CSV export and data reset
+- CSV export
 - Firestore persistence with real-time sync
-- First-run data seeding and silent migration of legacy data
+- Silent one-time migration of legacy data for the original user
 
 **Out of scope:**
 - Push notifications
@@ -47,24 +47,25 @@ A premium single-page home asset and inventory management app for homeowners who
 
 ---
 
-## Feature 2 — Pre-Populated Default Dataset
+## Feature 2 — First-Run House Creation and Legacy Migration
 
-**User story:** As a new user, I want the app to start with a realistic sample dataset so that I can immediately see what the app looks like in use.
+**User story:** As a user signing in for the first time after the multi-house upgrade, I want my existing inventory to be carried over automatically so that I don't lose any data.
 
 **Acceptance Criteria:**
-1. The app shall seed the following 14 rooms and 72 items into a new user's Firestore on first sign-in: Laundry Room, Kids Room, Guest Room, Flex Room, Master Bed, Loft, Living Room, Dining Room, Kitchen, Garage, Backyard, Front Yard, Front Porch.
-2. Each seeded item shall include a room name, item name, and estimated value (or `null` if unpriced).
-3. The seeding shall use a Firestore batch write for atomicity.
-4. A loading indicator shall be displayed while seeding is in progress.
-5. The app must not re-seed if items already exist in the user's Firestore collection.
+1. On first sign-in, if the user has no `houseIds` in their profile, the app shall automatically create their first house with no prompt.
+2. If the user has existing items at the legacy `users/{uid}/items` path, the app shall silently migrate all of them (batch copy + delete) into `houses/{houseId}/items`. This migration must run exactly once.
+3. The migration must use a Firestore batch write for atomicity on each collection (items, then photos).
+4. A full-screen loading overlay shall be shown during migration with a "Setting up your home…" message.
+5. New users with no legacy data shall receive an empty house — no default dataset shall be seeded.
+6. The first-house creation must be guarded by an `initRan` ref so it cannot execute more than once per session, even if the auth listener fires multiple times.
 
 **Test Plan:**
 
 | Step | Expected Result |
 |------|----------------|
-| Sign in as a brand-new user | Loading indicator appears briefly, then 72 items visible across 14 rooms |
-| Sign out and sign back in | No re-seed; same items visible (including any edits made) |
-| Use "Reset to Defaults" then sign out/in | Items restored to original dataset |
+| Sign in as a brand-new user (no legacy data) | House "My Home" created; inventory is empty |
+| Sign in as the original user (has legacy items) | Migration runs once; all items appear under the new house |
+| Refresh after migration | No re-migration; same items shown |
 
 ---
 
@@ -232,23 +233,9 @@ A premium single-page home asset and inventory management app for homeowners who
 
 ---
 
-## Feature 10 — Reset to Defaults
+## Feature 10 — *(Removed — Reset to Defaults feature retired)*
 
-**User story:** As a user, I want to reset my inventory to the original default dataset so that I can start fresh if my data becomes messy.
-
-**Acceptance Criteria:**
-1. A "Reset to Defaults" button shall open a confirmation modal warning the user that all current items will be deleted and replaced.
-2. Confirming the reset shall delete all items in the user's Firestore collection and re-seed the 72 default items.
-3. A loading indicator shall be displayed during the reset and re-seed operation.
-4. Cancelling the confirmation modal shall leave all data unchanged.
-
-**Test Plan:**
-
-| Step | Expected Result |
-|------|----------------|
-| Click "Reset to Defaults", then cancel | No data changed |
-| Click "Reset to Defaults", then confirm | Loading shown; all items replaced with original 72 dataset |
-| Check Firestore after reset | Old custom items gone; default items present |
+The "Reset to Defaults" feature has been removed. There is no longer a universal default dataset — each house holds its owner's real inventory data, and resetting to a shared template is not meaningful in a multi-house, multi-user context.
 
 ---
 
@@ -267,32 +254,14 @@ A premium single-page home asset and inventory management app for homeowners who
 | Step | Expected Result |
 |------|----------------|
 | Add an item on Device A | Item appears on Device B without reload |
-| Open Firestore Console and inspect data | Items stored at `users/{uid}/items/{itemId}` |
+| Open Firestore Console and inspect data | Items stored at `houses/{houseId}/items/{itemId}` |
 | Attempt to access another user's data via Firestore REST | Request denied by security rules |
 
 ---
 
-## Feature 12 — Initial Data Seeding
+## Feature 12 — *(Merged into Feature 2 — First-Run House Creation and Legacy Migration)*
 
-**User story:** As a new user, I want the app to automatically populate a realistic default dataset so that the app is immediately useful and I can see how it works.
-
-**Acceptance Criteria:**
-1. On first sign-in, the app shall check whether the user has any house IDs in their `users/{uid}` profile document.
-2. If no houses exist, the app shall silently create the user's first house and either migrate legacy `users/{uid}/items` data or seed 72 default items (no user prompt required).
-3. The seed data shall exactly match the dataset specified in the project brief (14 rooms, 72 items, with correct values and nulls).
-4. A full-screen loading overlay shall be shown during seeding with a "Setting up your inventory…" message.
-5. The app must not seed data if items already exist in Firestore, regardless of how many items there are.
-6. The "Reset to Defaults" action (F10) shall use the same seed dataset and logic as the first-run seed.
-7. The first-house creation must run at most once per user — an `initRan` guard must prevent double-execution if the auth listener fires multiple times.
-
-**Test Plan:**
-
-| Step | Expected Result |
-|------|----------------|
-| Sign in as a new user | Loading overlay shows "Setting up your inventory…"; then full grid appears |
-| Sign out and sign back in | No re-seed; existing items shown |
-| Add 5 items, sign out, sign back in | No re-seed; all items (original + added) shown |
-| Use "Reset to Defaults" | Original 72 items restored exactly |
+The original seeding feature has been superseded by Feature 2. New users start with an empty house; there is no default dataset.
 
 ---
 

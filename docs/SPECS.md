@@ -142,7 +142,7 @@ Max file size enforced client-side at 10 MB.
 
 ---
 
-## Defined Rooms (canonical list — used in dropdowns and seeding)
+## Defined Rooms (canonical list — used in dropdowns)
 ```
 Living Room | Kitchen | Master Bedroom | Bedroom 2 | Bedroom 3 |
 Bathroom | En-suite | Dining Room | Study / Office | Garage |
@@ -151,85 +151,6 @@ Utility Room | Loft / Attic | Garden / Shed | Hallway
 14 rooms total.
 
 ---
-
-## Default Seed Dataset (72 items)
-
-72 items spread across all 14 rooms. One item (`Christmas Decorations`) has a null value. All values are in USD.
-
-| Room | Item | Value ($) |
-|------|------|-----------|
-| Living Room | Sofa (3-seater) | 1200 |
-| Living Room | Coffee Table | 250 |
-| Living Room | TV (65") | 900 |
-| Living Room | TV Stand | 180 |
-| Living Room | Bookcase | 150 |
-| Living Room | Floor Lamp | 80 |
-| Living Room | Rug | 200 |
-| Living Room | Armchair | 450 |
-| Living Room | Curtains | 120 |
-| Living Room | Gaming Console | 500 |
-| Kitchen | Refrigerator | 800 |
-| Kitchen | Washing Machine | 600 |
-| Kitchen | Dishwasher | 550 |
-| Kitchen | Microwave | 120 |
-| Kitchen | Toaster | 40 |
-| Kitchen | Kettle | 35 |
-| Kitchen | Coffee Machine | 180 |
-| Kitchen | Air Fryer | 90 |
-| Kitchen | Blender | 60 |
-| Kitchen | Stand Mixer | 350 |
-| Kitchen | Knife Set | 100 |
-| Dining Room | Dining Table | 700 |
-| Dining Room | Dining Chairs (×6) | 480 |
-| Dining Room | Sideboard | 350 |
-| Master Bedroom | King Bed Frame | 900 |
-| Master Bedroom | King Mattress | 1100 |
-| Master Bedroom | Wardrobe (2-door) | 600 |
-| Master Bedroom | Chest of Drawers | 280 |
-| Master Bedroom | Bedside Tables (×2) | 200 |
-| Master Bedroom | Dressing Table | 220 |
-| Master Bedroom | Full-length Mirror | 90 |
-| Bedroom 2 | Double Bed Frame | 500 |
-| Bedroom 2 | Double Mattress | 600 |
-| Bedroom 2 | Single Wardrobe | 300 |
-| Bedroom 2 | Chest of Drawers | 180 |
-| Bedroom 3 | Single Bed Frame | 250 |
-| Bedroom 3 | Single Mattress | 300 |
-| Bedroom 3 | Wardrobe | 280 |
-| Bedroom 3 | Desk | 150 |
-| Bedroom 3 | Desk Chair | 120 |
-| Bathroom | Shower Enclosure | 400 |
-| Bathroom | Bathroom Cabinet | 100 |
-| Bathroom | Towel Rail | 60 |
-| Bathroom | Scales | 30 |
-| En-suite | Electric Toothbrush | 80 |
-| En-suite | Hair Dryer | 60 |
-| En-suite | Straighteners | 90 |
-| Study / Office | Desktop PC | 1200 |
-| Study / Office | Monitor (27") | 350 |
-| Study / Office | Office Desk | 300 |
-| Study / Office | Office Chair | 400 |
-| Study / Office | Printer | 150 |
-| Study / Office | Bookcase | 120 |
-| Study / Office | Shredder | 50 |
-| Garage | Lawnmower | 280 |
-| Garage | Power Drill Set | 120 |
-| Garage | Workbench | 200 |
-| Garage | Tool Cabinet | 180 |
-| Garage | Bicycle (×2) | 700 |
-| Garage | Pressure Washer | 180 |
-| Utility Room | Tumble Dryer | 500 |
-| Utility Room | Vacuum Cleaner | 250 |
-| Utility Room | Iron + Ironing Board | 80 |
-| Loft / Attic | Storage Shelving | 120 |
-| Loft / Attic | Christmas Decorations | null |
-| Loft / Attic | Suitcases (×3) | 300 |
-| Garden / Shed | Garden Furniture Set | 450 |
-| Garden / Shed | BBQ Grill | 200 |
-| Garden / Shed | Garden Tools Set | 120 |
-| Hallway | Coat Rack | 60 |
-| Hallway | Hall Table | 120 |
-| Hallway | Mirror | 80 |
 
 ---
 
@@ -319,13 +240,7 @@ async function initFirstHouse(u):
       newRef = doc(db, "houses", houseId, "photos", snap.id)
       batch2.set(newRef, snap.data())
     await batch2.commit()
-  else:
-    // Seed defaults
-    batch = writeBatch(db)
-    for item in DEFAULT_ITEMS:
-      ref = doc(collection(db, "houses", houseId, "items"))
-      batch.set(ref, { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-    await batch.commit()
+  // New users start with an empty house — no seeding
   await updateDoc(doc(db, "users", u.uid), { houseIds: arrayUnion(houseId) })
   setActiveHouseId(houseId)
   set seeding = false
@@ -381,27 +296,6 @@ async function acceptInvite(invite, u):
 ```
 async function declineInvite(invite):
   await deleteDoc(doc(db, "invites", invite.id))
-```
-
-### First-Run Seeding (inside initFirstHouse — see above)
-Called only when `hasOldData` is false. Batch-writes all 72 DEFAULT_ITEMS into `houses/{houseId}/items`.
-
-### Reset to Defaults
-```
-async function resetToDefaults(activeHouseId):
-  show confirmation modal
-  on confirm:
-    set seeding = true
-    existing = await getDocs(collection(db, "houses", activeHouseId, "items"))
-    deleteBatch = writeBatch(db)
-    for doc in existing.docs: deleteBatch.delete(doc.ref)
-    await deleteBatch.commit()
-    seedBatch = writeBatch(db)
-    for item in DEFAULT_ITEMS:
-      ref = doc(collection(db, "houses", activeHouseId, "items"))
-      seedBatch.set(ref, { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-    await seedBatch.commit()
-    set seeding = false
 ```
 
 ### Photo Upload (to gallery)

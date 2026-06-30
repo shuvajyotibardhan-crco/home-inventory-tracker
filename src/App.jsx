@@ -33,7 +33,7 @@ import {
 } from 'firebase/storage'
 import {
   LogIn, LogOut, Plus, Pencil, Trash2, X,
-  BarChart2, Download, RefreshCw, Search, Image,
+  BarChart2, Download, Search, Image,
   CheckSquare, Square, AlertCircle, Loader2,
   Link2, Home, ChevronDown, Users, Share2,
   MapPin, Check, Edit3,
@@ -64,80 +64,6 @@ const ROOMS = [
   'Utility Room', 'Loft / Attic', 'Garden / Shed', 'Hallway',
 ]
 
-const DEFAULT_ITEMS = [
-  { name: 'Sofa (3-seater)', room: 'Living Room', value: 1200 },
-  { name: 'Coffee Table', room: 'Living Room', value: 250 },
-  { name: 'TV (65")', room: 'Living Room', value: 900 },
-  { name: 'TV Stand', room: 'Living Room', value: 180 },
-  { name: 'Bookcase', room: 'Living Room', value: 150 },
-  { name: 'Floor Lamp', room: 'Living Room', value: 80 },
-  { name: 'Rug', room: 'Living Room', value: 200 },
-  { name: 'Armchair', room: 'Living Room', value: 450 },
-  { name: 'Curtains', room: 'Living Room', value: 120 },
-  { name: 'Gaming Console', room: 'Living Room', value: 500 },
-  { name: 'Refrigerator', room: 'Kitchen', value: 800 },
-  { name: 'Washing Machine', room: 'Kitchen', value: 600 },
-  { name: 'Dishwasher', room: 'Kitchen', value: 550 },
-  { name: 'Microwave', room: 'Kitchen', value: 120 },
-  { name: 'Toaster', room: 'Kitchen', value: 40 },
-  { name: 'Kettle', room: 'Kitchen', value: 35 },
-  { name: 'Coffee Machine', room: 'Kitchen', value: 180 },
-  { name: 'Air Fryer', room: 'Kitchen', value: 90 },
-  { name: 'Blender', room: 'Kitchen', value: 60 },
-  { name: 'Stand Mixer', room: 'Kitchen', value: 350 },
-  { name: 'Knife Set', room: 'Kitchen', value: 100 },
-  { name: 'Dining Table', room: 'Dining Room', value: 700 },
-  { name: 'Dining Chairs (×6)', room: 'Dining Room', value: 480 },
-  { name: 'Sideboard', room: 'Dining Room', value: 350 },
-  { name: 'King Bed Frame', room: 'Master Bedroom', value: 900 },
-  { name: 'King Mattress', room: 'Master Bedroom', value: 1100 },
-  { name: 'Wardrobe (2-door)', room: 'Master Bedroom', value: 600 },
-  { name: 'Chest of Drawers', room: 'Master Bedroom', value: 280 },
-  { name: 'Bedside Tables (×2)', room: 'Master Bedroom', value: 200 },
-  { name: 'Dressing Table', room: 'Master Bedroom', value: 220 },
-  { name: 'Full-length Mirror', room: 'Master Bedroom', value: 90 },
-  { name: 'Double Bed Frame', room: 'Bedroom 2', value: 500 },
-  { name: 'Double Mattress', room: 'Bedroom 2', value: 600 },
-  { name: 'Single Wardrobe', room: 'Bedroom 2', value: 300 },
-  { name: 'Chest of Drawers', room: 'Bedroom 2', value: 180 },
-  { name: 'Single Bed Frame', room: 'Bedroom 3', value: 250 },
-  { name: 'Single Mattress', room: 'Bedroom 3', value: 300 },
-  { name: 'Wardrobe', room: 'Bedroom 3', value: 280 },
-  { name: 'Desk', room: 'Bedroom 3', value: 150 },
-  { name: 'Desk Chair', room: 'Bedroom 3', value: 120 },
-  { name: 'Shower Enclosure', room: 'Bathroom', value: 400 },
-  { name: 'Bathroom Cabinet', room: 'Bathroom', value: 100 },
-  { name: 'Towel Rail', room: 'Bathroom', value: 60 },
-  { name: 'Scales', room: 'Bathroom', value: 30 },
-  { name: 'Electric Toothbrush', room: 'En-suite', value: 80 },
-  { name: 'Hair Dryer', room: 'En-suite', value: 60 },
-  { name: 'Straighteners', room: 'En-suite', value: 90 },
-  { name: 'Desktop PC', room: 'Study / Office', value: 1200 },
-  { name: 'Monitor (27")', room: 'Study / Office', value: 350 },
-  { name: 'Office Desk', room: 'Study / Office', value: 300 },
-  { name: 'Office Chair', room: 'Study / Office', value: 400 },
-  { name: 'Printer', room: 'Study / Office', value: 150 },
-  { name: 'Bookcase', room: 'Study / Office', value: 120 },
-  { name: 'Shredder', room: 'Study / Office', value: 50 },
-  { name: 'Lawnmower', room: 'Garage', value: 280 },
-  { name: 'Power Drill Set', room: 'Garage', value: 120 },
-  { name: 'Workbench', room: 'Garage', value: 200 },
-  { name: 'Tool Cabinet', room: 'Garage', value: 180 },
-  { name: 'Bicycle (×2)', room: 'Garage', value: 700 },
-  { name: 'Pressure Washer', room: 'Garage', value: 180 },
-  { name: 'Tumble Dryer', room: 'Utility Room', value: 500 },
-  { name: 'Vacuum Cleaner', room: 'Utility Room', value: 250 },
-  { name: 'Iron + Ironing Board', room: 'Utility Room', value: 80 },
-  { name: 'Storage Shelving', room: 'Loft / Attic', value: 120 },
-  { name: 'Christmas Decorations', room: 'Loft / Attic', value: null },
-  { name: 'Suitcases (×3)', room: 'Loft / Attic', value: 300 },
-  { name: 'Garden Furniture Set', room: 'Garden / Shed', value: 450 },
-  { name: 'BBQ Grill', room: 'Garden / Shed', value: 200 },
-  { name: 'Garden Tools Set', room: 'Garden / Shed', value: 120 },
-  { name: 'Coat Rack', room: 'Hallway', value: 60 },
-  { name: 'Hall Table', room: 'Hallway', value: 120 },
-  { name: 'Mirror', room: 'Hallway', value: 80 },
-]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -240,8 +166,7 @@ export default function App() {
   const [formValue, setFormValue] = useState('')
   const [formError, setFormError] = useState('')
   const [deletingItem, setDeletingItem] = useState(null)
-  const [showResetModal, setShowResetModal] = useState(false)
-  const [resetting, setResetting] = useState(false)
+
   const [geminiApiKey, setGeminiApiKey] = useState(import.meta.env.VITE_GEMINI_API_KEY || '')
   const [showKeyInput, setShowKeyInput] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -446,15 +371,6 @@ export default function App() {
           })
           await batch2.commit()
         }
-      } else {
-        // New user — seed default dataset
-        const batch = writeBatch(db)
-        DEFAULT_ITEMS.forEach(item => {
-          batch.set(doc(collection(db, 'houses', houseId, 'items')), {
-            ...item, photoUrl: null, createdAt: serverTimestamp(),
-          })
-        })
-        await batch.commit()
       }
 
       await updateDoc(doc(db, 'users', u.uid), { houseIds: arrayUnion(houseId) })
@@ -610,23 +526,6 @@ export default function App() {
     setDeletingItem(null)
   }
 
-  // ── Reset ─────────────────────────────────────────────────────────────────────
-
-  async function handleReset() {
-    setResetting(true)
-    const snap = await getDocs(collection(db, 'houses', activeHouseId, 'items'))
-    const batch = writeBatch(db)
-    snap.docs.forEach(d => batch.delete(d.ref))
-    await batch.commit()
-    const batch2 = writeBatch(db)
-    DEFAULT_ITEMS.forEach(item => {
-      batch2.set(doc(collection(db, 'houses', activeHouseId, 'items')), {
-        ...item, photoUrl: null, createdAt: serverTimestamp(),
-      })
-    })
-    await batch2.commit()
-    setResetting(false); setShowResetModal(false)
-  }
 
   // ── Filters & analytics ───────────────────────────────────────────────────────
 
@@ -771,7 +670,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Escape') return
-      setShowAddModal(false); setDeletingItem(null); setShowResetModal(false)
+      setShowAddModal(false); setDeletingItem(null)
       setScannedItems(null); setViewerUrl(null); setViewerItemId(null)
       setLinkingItemIds(null); setShowProfileModal(false); setShowCreateHouseModal(false)
       setShowShareModal(false); setShowHouseSwitcher(false)
@@ -1068,12 +967,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
                   className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition">
                   <Download className="w-4 h-4" /> Export
                 </button>
-                {isOwner && (
-                  <button onClick={() => setShowResetModal(true)}
-                    className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition">
-                    <RefreshCw className="w-4 h-4" /> Reset
-                  </button>
-                )}
                 <button onClick={openAdd}
                   className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
                   <Plus className="w-4 h-4" /> Add Item
@@ -1466,20 +1359,6 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
         </Modal>
       )}
 
-      {/* ── Reset Modal ────────────────────────────────────────────────────────── */}
-      {showResetModal && (
-        <Modal title="Reset to Defaults" onClose={() => setShowResetModal(false)}>
-          <p className="text-sm text-slate-600 mb-2">This will <strong>delete all current items</strong> in this house and restore the 72-item default dataset.</p>
-          <p className="text-sm text-red-600 mb-6 font-medium">This can't be undone.</p>
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setShowResetModal(false)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-            <button onClick={handleReset} disabled={resetting}
-              className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition flex items-center gap-2 disabled:opacity-60">
-              {resetting && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Reset to Defaults
-            </button>
-          </div>
-        </Modal>
-      )}
 
       {/* ── Scan Review Modal ──────────────────────────────────────────────────── */}
       {scannedItems && (
