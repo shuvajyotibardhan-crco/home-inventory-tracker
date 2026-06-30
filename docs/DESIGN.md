@@ -29,7 +29,7 @@ The entire application. It is divided into logical sections within a single file
 **Firestore layer — houses**
 - A single `useEffect` (triggered when `user` changes) subscribes to `onSnapshot` on `users/{uid}`. When the `houseIds` array changes, it reconciles per-house `onSnapshot` listeners stored in a `houseListeners` ref map.
 - Each per-house listener watches `houses/{houseId}` and writes the house document into the `houses` state array. If a listener fires a permission error (user was removed from the house), it cleans itself up and removes the stale `houseId` from `users/{uid}/houseIds` via `arrayRemove`.
-- If `houseIds` is empty on first read and `initRan.current` is `false`, `initFirstHouse(user)` runs once: checks for legacy `users/{uid}/items` data, migrates it (or seeds defaults), creates the `houses/{houseId}` document and `members` subcollection, and appends the new house ID to `users/{uid}/houseIds`. The `initRan` ref prevents double-execution.
+- If `houseIds` is empty on first read and `initRan.current` is `false`, `initFirstHouse(user)` runs once: creates the `houses/{houseId}` document and `members` subcollection, then checks for legacy `users/{uid}/items` data. If found, it deletes those items (placeholder data from before the multi-house migration) and writes the real `MIGRATION_ITEMS` inventory for 158 N Edge Cliff St in their place. If not found (new user), the house starts empty. The `initRan` ref prevents double-execution.
 - Items and photos are read from `houses/{activeHouseId}/items` and `houses/{activeHouseId}/photos` via separate `onSnapshot` listeners that restart whenever `activeHouseId` changes.
 - `addItem`, `updateItem`, `deleteItem` target `houses/{activeHouseId}/items/{itemId}`.
 
