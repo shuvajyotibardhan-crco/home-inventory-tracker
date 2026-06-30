@@ -2,22 +2,22 @@
 
 ## Overview
 
-A premium single-page home asset and inventory management app for homeowners who want a clear financial picture of their household items. Users sign in with Google, view and manage inventory across 14 named rooms, scan paper lists with AI, and export data as CSV. All data is stored in Firestore, scoped to the signed-in user.
+A premium single-page home asset and inventory management app for homeowners who want a clear financial picture of their household items. Users sign in with Google, then manage one or more houses. Each house has its own inventory, and houses can be shared with other users by email. Inventory is managed across 14 named rooms per house. AI-powered document scanning, photo uploads, CSV export, and a financial analytics dashboard round out the feature set. All data lives in Firestore, scoped to houses rather than individual users.
 
 ## Scope
 
 **In scope:**
 - Google Sign-In via Firebase Auth
-- Full CRUD inventory management
+- Full CRUD inventory management per house
+- Multi-house management (create, switch, edit address)
+- House sharing — invite collaborators by email; pending invite flow for unregistered users
 - AI-powered document scanning (Gemini 2.5 Flash)
 - Filtering, search, and analytics dashboard
 - CSV export and data reset
 - Firestore persistence with real-time sync
-- First-run data seeding
+- First-run data seeding and silent migration of legacy data
 
 **Out of scope:**
-- Multi-user sharing or collaboration
-- Photo attachments for items
 - Push notifications
 - Native mobile app (web only)
 
@@ -258,8 +258,8 @@ A premium single-page home asset and inventory management app for homeowners who
 
 **Acceptance Criteria:**
 1. All item writes (create, update, delete) shall be persisted to Firestore immediately.
-2. The app shall use a real-time `onSnapshot` listener on `users/{uid}/items` to keep the UI in sync with Firestore.
-3. Firestore security rules must enforce that users can only read and write documents under their own UID path.
+2. The app shall use a real-time `onSnapshot` listener on `houses/{houseId}/items` for the active house to keep the UI in sync with Firestore.
+3. Firestore security rules must enforce that only members of a house can read or write documents under that house's path.
 4. The app shall display a loading state while the initial Firestore data is being fetched.
 
 **Test Plan:**
@@ -277,12 +277,13 @@ A premium single-page home asset and inventory management app for homeowners who
 **User story:** As a new user, I want the app to automatically populate a realistic default dataset so that the app is immediately useful and I can see how it works.
 
 **Acceptance Criteria:**
-1. On first sign-in, the app shall check whether the user's `users/{uid}/items` collection is empty.
-2. If empty, the app shall batch-write all 72 default items to Firestore before showing the inventory view.
+1. On first sign-in, the app shall check whether the user has any house IDs in their `users/{uid}` profile document.
+2. If no houses exist, the app shall silently create the user's first house and either migrate legacy `users/{uid}/items` data or seed 72 default items (no user prompt required).
 3. The seed data shall exactly match the dataset specified in the project brief (14 rooms, 72 items, with correct values and nulls).
 4. A full-screen loading overlay shall be shown during seeding with a "Setting up your inventory…" message.
-5. The app must not seed data if items already exist, regardless of how many items there are.
+5. The app must not seed data if items already exist in Firestore, regardless of how many items there are.
 6. The "Reset to Defaults" action (F10) shall use the same seed dataset and logic as the first-run seed.
+7. The first-house creation must run at most once per user — an `initRan` guard must prevent double-execution if the auth listener fires multiple times.
 
 **Test Plan:**
 
@@ -301,7 +302,7 @@ A premium single-page home asset and inventory management app for homeowners who
 
 **Acceptance Criteria:**
 1. A dedicated "Photos" tab shall display a drag-and-drop upload zone accepting multiple image files at once (JPEG, PNG, WEBP, HEIC).
-2. Uploaded photos shall be stored in Firebase Storage at `users/{uid}/photos/{timestamp}.{ext}` and their metadata (URL, filename, upload timestamp) shall be saved to the `users/{uid}/photos` Firestore collection.
+2. Uploaded photos shall be stored in Firebase Storage at `houses/{houseId}/photos/{timestamp}.{ext}` and their metadata (URL, filename, upload timestamp) shall be saved to the `houses/{houseId}/photos` Firestore collection.
 3. The Photos tab shall display all uploaded photos in a responsive grid, showing a thumbnail, filename, and count of items currently linked to each photo.
 4. Each photo in the gallery shall have a delete button that removes the metadata document from Firestore (the Storage file and any existing `photoUrl` links on items are left unchanged).
 5. Each item row in the inventory grid shall display a "Link" button if no photo is linked, or a thumbnail if a photo is already linked.
@@ -327,3 +328,61 @@ A premium single-page home asset and inventory management app for homeowners who
 | Click a thumbnail in inventory grid | Full-size viewer modal opens |
 | Click "Unlink photo" in viewer | Thumbnail gone from row; `photoUrl` null in Firestore; photo still in gallery |
 | Attempt to upload a file over 10 MB | Error message shown; no upload attempted |
+
+---
+
+## Feature 14 — House Management
+
+**User story:** As a user, I want to create and manage multiple houses, each with its own address and inventory, so that I can track assets across different properties.
+
+**Acceptance Criteria:**
+1. The header shall display the name of the currently active house along with a dropdown arrow.
+2. Clicking the house name shall open a dropdown listing all houses the user belongs to, plus a "Create new house" option.
+3. Selecting a house from the dropdown shall switch the active house; the inventory grid and photos gallery shall update immediately to reflect that house's data.
+4. The active house ID shall be persisted in `localStorage` so that the user's last-selected house is restored on page reload.
+5. A "Profile" button shall open a profile modal showing the user's display name, email, all houses they belong to (with addresses), and pending incoming invitations.
+6. From the profile modal, the owner of a house shall be able to edit the house name and address inline and save changes to Firestore.
+7. Clicking "Create new house" shall open a modal where the user can enter a house name and optional address; submitting shall create a new `houses/{houseId}` document, add the user as owner in `houses/{houseId}/members`, and add the house ID to `users/{uid}/houseIds`.
+8. A newly created house must start with an empty inventory — no seed data shall be applied.
+9. The house switcher dropdown shall always show the currently active house as selected.
+
+**Test Plan:**
+
+| Step | Expected Result |
+|------|----------------|
+| Open house dropdown | All user's houses listed, plus "Create new house" |
+| Select a different house | Inventory switches to that house's items |
+| Reload the page | Previously active house is restored |
+| Click "Create new house", submit with a name | New house appears in dropdown; inventory is empty |
+| Open profile modal, edit house address, save | Updated address visible in modal and header bar |
+
+---
+
+## Feature 15 — House Sharing
+
+**User story:** As a house owner, I want to invite other users to access my house inventory so that family members or co-owners can view and manage the same list.
+
+**Acceptance Criteria:**
+1. A "Share" button on the active house shall open a share modal displaying current members (name, email, role) and any pending invitations.
+2. The share modal shall include an email input to invite a new collaborator.
+3. Submitting an invite email shall check whether that email matches an existing `users` document. If the user exists, they shall be added directly to `houses/{houseId}/members` with role `member` and the house ID appended to their `users/{uid}/houseIds`. If the user does not yet have an account, a pending `invites/{inviteId}` document shall be created.
+4. The inviting user must not be able to invite themselves or a user already a member of the house.
+5. On sign-in, the app shall query `invites` for documents where `inviteeEmail` matches the signed-in user's email and display each as a notification in the profile modal.
+6. The invitee shall be able to accept an invite, which shall add them to the house's `members` subcollection, append the house ID to their `houseIds`, and delete the invite document.
+7. The invitee shall be able to decline an invite, which shall delete the invite document with no other changes.
+8. The owner shall be able to remove any non-owner member from the house; this shall delete their entry from `members` and remove the house ID from their `users/{uid}/houseIds`.
+9. Firestore security rules must prevent non-members from reading or writing any path under `houses/{houseId}`.
+10. Only the house owner shall be able to update or delete the top-level `houses/{houseId}` document.
+
+**Test Plan:**
+
+| Step | Expected Result |
+|------|----------------|
+| Click "Share" on a house | Share modal shows current members and invite form |
+| Invite a registered user by email | User immediately added as member; house appears in their switcher |
+| Invite an unregistered email | Pending invite record created; shown in share modal |
+| Sign in as the invited user | Invite notification appears in profile modal |
+| Accept the invite | House added to the user's house switcher; invite notification gone |
+| Decline the invite | Invite gone; house not added |
+| Owner removes a member | Member removed from the house; house no longer in their switcher |
+| Non-member attempts direct Firestore access | Request denied by security rules |

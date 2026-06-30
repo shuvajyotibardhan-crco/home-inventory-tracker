@@ -2,7 +2,7 @@
 
 ## High-Level Overview
 
-A React single-page application with no traditional backend. Firebase handles auth, data storage, and file storage. The entire UI and application logic lives in `src/App.jsx`. Gemini 2.5 Flash processes scanned document images and returns structured JSON via a REST call made directly from the browser. The app is hosted on Firebase Hosting and deployed automatically via GitHub Actions on every push to `main`.
+A React single-page application with no traditional backend. Firebase handles auth, data storage, and file storage. The entire UI and application logic lives in `src/App.jsx`. Data is organized around houses rather than users — each house has its own items, photos, and member list, and a user can belong to multiple houses. Gemini 2.5 Flash processes scanned document images and returns structured JSON via a REST call made directly from the browser. The app is hosted on Firebase Hosting and deployed automatically via GitHub Actions on every push to `main`.
 
 ---
 
@@ -23,27 +23,42 @@ The entire application. It is divided into logical sections within a single file
 **Auth layer**
 - Initialises Firebase App, Auth, Firestore, and Storage on module load.
 - `useEffect` subscribes to `onAuthStateChanged`. While loading, a full-screen spinner renders. If no user, the sign-in page renders. If authenticated, the main inventory view renders.
+- On sign-in, `setDoc(..., { merge: true })` upserts the user's profile doc at `users/{uid}` with their display name, email, and photo URL. This keeps the directory current for invite email lookups.
 - `handleSignIn` calls `signInWithPopup` with `GoogleAuthProvider`. `handleSignOut` calls `signOut`.
 
-**Firestore layer**
-- Two `useEffect` hooks (both triggered when `user` changes) subscribe to `onSnapshot` on `users/{uid}/items` and `users/{uid}/photos`. Both unsubscribe on cleanup.
-- On first items load, if the snapshot is empty, `seedDefaultData()` is called — a Firestore batch write of all 72 default items.
-- `addItem`, `updateItem`, `deleteItem` call `addDoc`, `updateDoc`, `deleteDoc` directly.
+**Firestore layer — houses**
+- A single `useEffect` (triggered when `user` changes) subscribes to `onSnapshot` on `users/{uid}`. When the `houseIds` array changes, it reconciles per-house `onSnapshot` listeners stored in a `houseListeners` ref map.
+- Each per-house listener watches `houses/{houseId}` and writes the house document into the `houses` state array. If a listener fires a permission error (user was removed from the house), it cleans itself up and removes the stale `houseId` from `users/{uid}/houseIds` via `arrayRemove`.
+- If `houseIds` is empty on first read and `initRan.current` is `false`, `initFirstHouse(user)` runs once: checks for legacy `users/{uid}/items` data, migrates it (or seeds defaults), creates the `houses/{houseId}` document and `members` subcollection, and appends the new house ID to `users/{uid}/houseIds`. The `initRan` ref prevents double-execution.
+- Items and photos are read from `houses/{activeHouseId}/items` and `houses/{activeHouseId}/photos` via separate `onSnapshot` listeners that restart whenever `activeHouseId` changes.
+- `addItem`, `updateItem`, `deleteItem` target `houses/{activeHouseId}/items/{itemId}`.
 
 **Storage layer**
-- `uploadPhoto(file, itemIds)` uploads to `users/{uid}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `users/{uid}/photos` (URL + original filename). Optionally links to specified item IDs immediately.
-- `handleLinkPhoto(photoUrl, itemIds)` writes the chosen URL to each item's `photoUrl` field — called when the user picks from the gallery picker.
+- `uploadPhoto(file, itemIds)` uploads to `houses/{activeHouseId}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `houses/{activeHouseId}/photos`. Optionally links to specified item IDs immediately.
+- Legacy photos stored at `users/{uid}/photos/` remain readable (backwards-compat Storage rule) but new uploads always use the house-scoped path.
+- `handleLinkPhoto(photoUrl, itemIds)` writes the chosen URL to each item's `photoUrl` field.
 - `handleUnlinkPhoto(itemId)` calls `updateDoc` to set `photoUrl` to `null`; the Storage file and gallery record are left intact.
-- `handleDeletePhoto(photoId)` deletes the Firestore metadata document from `users/{uid}/photos`; the Storage file and any existing item `photoUrl` links remain.
+- `handleDeletePhoto(photoId)` deletes the Firestore metadata document from `houses/{activeHouseId}/photos`; the Storage file and any item `photoUrl` links remain.
 
 **AI scan layer**
 - `handleScanImage(file)` reads the file as base64, builds the Gemini API request body (with JSON schema in `generationConfig`), and calls `callGeminiWithBackoff`.
 - `callGeminiWithBackoff` wraps the fetch in a retry loop: up to 5 attempts, delays `[1000, 2000, 4000, 8000, 16000]` ms.
 - On success, parsed items are placed in `scannedItems` state and the review modal opens.
 
+**Sharing / invite layer**
+- `sendInvite(email)` queries `users` by email. If found, adds the user directly to `houses/{houseId}/members` and appends the house to their `houseIds`. If not found, creates an `invites/{inviteId}` document (`inviterUid`, `houseId`, `houseName`, `inviteeEmail`).
+- On sign-in, the app queries `invites` where `inviteeEmail == user.email` and stores results in `pendingInvites` state.
+- `acceptInvite(invite)` adds the user to the house members subcollection, appends the house ID to their `houseIds`, and deletes the invite document.
+- `declineInvite(invite)` deletes the invite document only.
+
 **State**
-- `items` — live array from Firestore items snapshot.
-- `photos` — live array from Firestore photos snapshot (gallery metadata).
+- `items` — live array from Firestore items snapshot for the active house.
+- `photos` — live array from Firestore photos snapshot for the active house.
+- `houses` — array of house documents the user belongs to.
+- `housesLoaded` — boolean, true once the initial house listener has resolved.
+- `activeHouseId` — ID of the currently selected house (persisted in `localStorage`).
+- `houseMembers` — live array of member documents for the active house.
+- `pendingInvites` — array of `invites` docs addressed to the current user's email.
 - `user` — Firebase Auth user object or `null`.
 - `authLoading` — boolean, true while `onAuthStateChanged` is resolving.
 - `seeding` — boolean, true while the first-run batch write is in progress.
@@ -54,7 +69,7 @@ The entire application. It is divided into logical sections within a single file
 - `scannedItems` — array of items parsed from Gemini, held pending review.
 - `uploadProgress` — number 0–100 for the active upload, or `null` when idle.
 - `viewerUrl` / `viewerItemId` — URL and item ID for the full-size photo viewer modal.
-- Modal states: `showAddModal`, `showResetModal`, `deletingItem`, `scannedItems`, `linkingItemIds`, `viewerUrl`.
+- Modal states: `showAddModal`, `showResetModal`, `showProfileModal`, `showCreateHouseModal`, `showShareModal`, `deletingItem`, `linkingItemIds`, `viewerUrl`.
 
 **Derived values (useMemo)**
 - `filteredItems` — `items` filtered by `searchText`, `roomFilter`, `missingPriceOnly`.
@@ -77,8 +92,11 @@ localStorage is device-local and lost on browser clear. Firestore gives per-user
 ### Firebase Storage for photos
 Firestore documents have a 1 MB size limit — base64 images can't be stored inline. Firebase Storage is the natural pairing: photos live in Storage, only the download URL lives in the Firestore item document.
 
+### House-scoped data model
+All inventory data (items, photos, members) is stored under `houses/{houseId}/` rather than `users/{uid}/`. This lets multiple users share a house without duplicating data, and it cleanly separates the identity layer (`users/`) from the asset layer (`houses/`). The cost is a slightly more complex listener setup: a top-level `users/{uid}` listener drives a dynamic map of per-house `onSnapshot` listeners. The complexity is contained in a single `useEffect` and a `houseListeners` ref.
+
 ### Central photo gallery with item linking
-Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage and a lightweight metadata document in `users/{uid}/photos`. Items don't own photos — they hold a reference URL. This means the same photo can link to any number of items, and deleting a gallery record doesn't cascade to items. The separation keeps item CRUD simple and gives the gallery its own managed lifecycle.
+Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage at `houses/{houseId}/photos/` and a lightweight metadata document in `houses/{houseId}/photos`. Items don't own photos — they hold a reference URL. The same photo can link to any number of items, and deleting a gallery record doesn't cascade to items.
 
 ### Gemini JSON schema enforcement
 Setting `response_mime_type: "application/json"` and `response_schema` in `generationConfig` removes the need for fragile regex parsing. The model is constrained to return a valid array of `{ room, item, value }` objects.
@@ -130,3 +148,6 @@ All Firebase config values are stored as GitHub Actions Secrets and injected as 
 | Photo deletion from Storage | Removing a photo from an item only clears the URL in Firestore — the file remains in Storage (avoids accidental deletion when same photo is linked to multiple items) |
 | Offline support | No offline mode; Firestore `onSnapshot` requires connectivity for the initial load |
 | Browser compatibility | Requires a modern browser with ES2020 support; no IE11 |
+| Invite email lookup | `sendInvite` queries `users` by email — works only if the invitee has signed in at least once. For new users, a pending `invites` doc is created and picked up on their first sign-in. |
+| House ownership transfer | Not currently supported — the original creator is permanently the owner. |
+| Legacy data migration | Runs automatically and silently for any user whose `users/{uid}/items` collection has data. It runs exactly once (guarded by `initRan` ref); if it fails mid-way, the user doc won't have the new `houseId` and migration will not retry. |

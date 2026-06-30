@@ -2,7 +2,52 @@
 
 ## Data Models
 
-### InventoryItem (Firestore document)
+### House (Firestore document — `houses/{houseId}`)
+```
+{
+  id: string          // Firestore auto-generated doc ID
+  name: string        // Display name (e.g. "My Home")
+  address: string     // Street address (may be empty string)
+  ownerId: string     // UID of the user who created the house
+  createdAt: Timestamp
+}
+```
+
+### HouseMember (Firestore document — `houses/{houseId}/members/{uid}`)
+```
+{
+  uid: string         // Firebase Auth UID (same as doc ID)
+  role: "owner" | "member"
+  displayName: string
+  email: string
+  joinedAt: Timestamp
+}
+```
+
+### Invite (Firestore document — `invites/{inviteId}`)
+```
+{
+  id: string          // Firestore auto-generated doc ID
+  inviterUid: string  // UID of the user who sent the invite
+  houseId: string     // Target house ID
+  houseName: string   // Display name of the house (denormalised for UI)
+  inviteeEmail: string  // Email address the invite was sent to
+  createdAt: Timestamp
+}
+```
+
+### UserProfile (Firestore document — `users/{uid}`)
+```
+{
+  email: string
+  displayName: string
+  photoURL: string
+  houseIds: string[]  // Array of house IDs the user belongs to
+  updatedAt: Timestamp
+}
+```
+
+### InventoryItem (Firestore document — `houses/{houseId}/items/{itemId}`)
 ```
 {
   id: string          // Firestore auto-generated doc ID
@@ -15,7 +60,7 @@
 }
 ```
 
-### Photo (Firestore document — `users/{uid}/photos/{photoId}`)
+### Photo (Firestore document — `houses/{houseId}/photos/{photoId}`)
 ```
 {
   id: string          // Firestore auto-generated doc ID
@@ -61,24 +106,39 @@
 ### Firestore
 ```
 users/
-  {uid}/
+  {uid}/                  ← UserProfile (email, displayName, houseIds[])
+    items/                ← LEGACY — migrated users only; read during initFirstHouse
+    photos/               ← LEGACY — migrated users only
+
+houses/
+  {houseId}/              ← House (name, address, ownerId)
+    members/
+      {uid}/              ← HouseMember (role, displayName, email)
     items/
-      {itemId}/     ← one document per InventoryItem
+      {itemId}/           ← InventoryItem
     photos/
-      {photoId}/    ← one document per uploaded Photo (gallery metadata)
+      {photoId}/          ← Photo (gallery metadata)
+
+invites/
+  {inviteId}/             ← Invite (inviterUid, houseId, inviteeEmail)
 ```
 
-Security rules enforce `request.auth.uid == uid` for all reads and writes.
+Security rules use `isMember(houseId)` and `isOwner(houseId)` helper functions (see Security Rules section). User profiles are world-readable to signed-in users (needed for invite email lookup).
 
 ### Firebase Storage
 ```
+houses/
+  {houseId}/
+    photos/
+      {timestamp}.{ext}   ← new uploads (membership checked via Firestore)
+
 users/
   {uid}/
     photos/
-      {timestamp}.{ext}
+      {allPaths}          ← LEGACY migrated photos (UID-scoped, read-only for backwards compat)
 ```
 
-Security rules enforce `request.auth.uid == uid`. Max file size enforced client-side at 10 MB.
+Max file size enforced client-side at 10 MB.
 
 ---
 
@@ -226,67 +286,157 @@ async function callGeminiWithBackoff(requestBody):
       await sleep(delays[attempt])
 ```
 
-### First-Run Seeding
+### initFirstHouse (first sign-in migration/creation)
 ```
-async function seedDefaultData(uid):
+async function initFirstHouse(u):
+  if initRan.current: return
+  initRan.current = true
   set seeding = true
-  snapshot = await getDocs(collection(db, "users", uid, "items"))
-  if snapshot.size > 0: return   // already seeded
-  batch = writeBatch(db)
-  for item in DEFAULT_ITEMS:
-    ref = doc(collection(db, "users", uid, "items"))
-    batch.set(ref, { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
-  await batch.commit()
+  oldItemsSnap = await getDocs(collection(db, "users", u.uid, "items"))
+  oldPhotosSnap = await getDocs(collection(db, "users", u.uid, "photos"))
+  hasOldData = !oldItemsSnap.empty
+  houseRef = await addDoc(collection(db, "houses"), {
+    name: "My Home",
+    address: hasOldData ? "<configured address>" : "",
+    ownerId: u.uid,
+    createdAt: serverTimestamp()
+  })
+  houseId = houseRef.id
+  await setDoc(doc(db, "houses", houseId, "members", u.uid), {
+    uid: u.uid, role: "owner", displayName: u.displayName,
+    email: u.email, joinedAt: serverTimestamp()
+  })
+  if hasOldData:
+    // Migrate items
+    batch = writeBatch(db)
+    for snap in oldItemsSnap.docs:
+      newRef = doc(db, "houses", houseId, "items", snap.id)
+      batch.set(newRef, snap.data())
+    await batch.commit()
+    // Migrate photos
+    batch2 = writeBatch(db)
+    for snap in oldPhotosSnap.docs:
+      newRef = doc(db, "houses", houseId, "photos", snap.id)
+      batch2.set(newRef, snap.data())
+    await batch2.commit()
+  else:
+    // Seed defaults
+    batch = writeBatch(db)
+    for item in DEFAULT_ITEMS:
+      ref = doc(collection(db, "houses", houseId, "items"))
+      batch.set(ref, { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    await batch.commit()
+  await updateDoc(doc(db, "users", u.uid), { houseIds: arrayUnion(houseId) })
+  setActiveHouseId(houseId)
   set seeding = false
 ```
 
+### createHouse
+```
+async function createHouse(name, address, u):
+  houseRef = await addDoc(collection(db, "houses"), {
+    name, address, ownerId: u.uid, createdAt: serverTimestamp()
+  })
+  houseId = houseRef.id
+  await setDoc(doc(db, "houses", houseId, "members", u.uid), {
+    uid: u.uid, role: "owner", displayName: u.displayName,
+    email: u.email, joinedAt: serverTimestamp()
+  })
+  await updateDoc(doc(db, "users", u.uid), { houseIds: arrayUnion(houseId) })
+  setActiveHouseId(houseId)
+  // New house starts empty — no seeding
+```
+
+### sendInvite
+```
+async function sendInvite(email, houseId, houseName, u):
+  // Check if the invitee already has an account
+  q = query(collection(db, "users"), where("email", "==", email))
+  snap = await getDocs(q)
+  if snap.empty:
+    await addDoc(collection(db, "invites"), {
+      inviterUid: u.uid, houseId, houseName, inviteeEmail: email, createdAt: serverTimestamp()
+    })
+  else:
+    invitee = snap.docs[0]
+    await setDoc(doc(db, "houses", houseId, "members", invitee.id), {
+      uid: invitee.id, role: "member", displayName: invitee.data().displayName,
+      email: invitee.data().email, joinedAt: serverTimestamp()
+    })
+    await updateDoc(doc(db, "users", invitee.id), { houseIds: arrayUnion(houseId) })
+```
+
+### acceptInvite
+```
+async function acceptInvite(invite, u):
+  await setDoc(doc(db, "houses", invite.houseId, "members", u.uid), {
+    uid: u.uid, role: "member", displayName: u.displayName,
+    email: u.email, joinedAt: serverTimestamp()
+  })
+  await updateDoc(doc(db, "users", u.uid), { houseIds: arrayUnion(invite.houseId) })
+  await deleteDoc(doc(db, "invites", invite.id))
+```
+
+### declineInvite
+```
+async function declineInvite(invite):
+  await deleteDoc(doc(db, "invites", invite.id))
+```
+
+### First-Run Seeding (inside initFirstHouse — see above)
+Called only when `hasOldData` is false. Batch-writes all 72 DEFAULT_ITEMS into `houses/{houseId}/items`.
+
 ### Reset to Defaults
 ```
-async function resetToDefaults(uid):
+async function resetToDefaults(activeHouseId):
   show confirmation modal
   on confirm:
     set seeding = true
-    existing = await getDocs(collection(db, "users", uid, "items"))
+    existing = await getDocs(collection(db, "houses", activeHouseId, "items"))
     deleteBatch = writeBatch(db)
     for doc in existing.docs: deleteBatch.delete(doc.ref)
     await deleteBatch.commit()
-    await seedDefaultData(uid)   // reuses seeding logic, size check skipped on reset path
+    seedBatch = writeBatch(db)
+    for item in DEFAULT_ITEMS:
+      ref = doc(collection(db, "houses", activeHouseId, "items"))
+      seedBatch.set(ref, { ...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    await seedBatch.commit()
     set seeding = false
 ```
 
 ### Photo Upload (to gallery)
 ```
-async function uploadPhoto(file, itemIds = [], uid):
+async function uploadPhoto(file, itemIds = [], activeHouseId):
   if file.size > 10_485_760: show error; return null
   filename = `${Date.now()}.${ext}`
-  storageRef = ref(storage, `users/${uid}/photos/${filename}`)
+  storageRef = ref(storage, `houses/${activeHouseId}/photos/${filename}`)
   uploadTask = uploadBytesResumable(storageRef, file)
   uploadTask.on('state_changed',
     snapshot => set uploadProgress = (bytes / total) * 100
   )
   await uploadTask
   url = await getDownloadURL(storageRef)
-  // Save metadata to photos gallery collection
-  await addDoc(collection(db, "users", uid, "photos"), { url, name: file.name, uploadedAt: serverTimestamp() })
-  // Optionally link to specific items immediately
+  await addDoc(collection(db, "houses", activeHouseId, "photos"), {
+    url, name: file.name, uploadedAt: serverTimestamp()
+  })
   for itemId in itemIds:
-    await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: url })
+    await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl: url })
   set uploadProgress = null
   return url
 ```
 
 ### Link Photo to Items
 ```
-async function handleLinkPhoto(photoUrl, itemIds, uid):
+async function handleLinkPhoto(photoUrl, itemIds, activeHouseId):
   for itemId in itemIds:
-    await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: url })
+    await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl })
   close link modal
 ```
 
 ### Unlink Photo from Item
 ```
-async function handleUnlinkPhoto(itemId, uid):
-  await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: null })
+async function handleUnlinkPhoto(itemId, activeHouseId):
+  await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl: null })
   // Photo file remains in Storage and gallery — no cascading delete
 ```
 
@@ -345,6 +495,7 @@ Home Inventory Tracker/
 ├── .env.example                  # Placeholder env vars
 ├── .env                          # Local secrets (never committed)
 ├── progress.md                   # Session-level task tracking
+├── docs/MANUAL_STEPS.md          # One-time manual setup steps (IAM, secrets)
 ├── package.json                  # Vite + React + Firebase + Tailwind deps
 ├── vite.config.js                # Vite config (React plugin)
 ├── tailwind.config.js            # Tailwind content paths
@@ -379,8 +530,52 @@ Home Inventory Tracker/
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/items/{itemId} {
+
+    function isMember(houseId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/houses/$(houseId)/members/$(request.auth.uid));
+    }
+
+    function isOwner(houseId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/houses/$(houseId)/members/$(request.auth.uid)).data.role == 'owner';
+    }
+
+    // User profiles — any signed-in user can read (needed for invite email lookup)
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Legacy subcollections — migration path reads old items/photos
+    match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Pending invitations
+    match /invites/{inviteId} {
+      allow read, list: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null && (
+        resource.data.inviteeEmail == request.auth.token.email ||
+        resource.data.inviterUid == request.auth.uid
+      );
+    }
+
+    // Houses
+    match /houses/{houseId} {
+      allow read: if isMember(houseId);
+      allow create: if request.auth != null;
+      allow update, delete: if isOwner(houseId);
+
+      match /members/{memberId} {
+        allow read: if isMember(houseId);
+        allow create, update: if isOwner(houseId) || request.auth.uid == memberId;
+        allow delete: if isOwner(houseId) || request.auth.uid == memberId;
+      }
+
+      match /items/{itemId} { allow read, write: if isMember(houseId); }
+      match /photos/{photoId} { allow read, write: if isMember(houseId); }
     }
   }
 }
@@ -392,7 +587,13 @@ service cloud.firestore {
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /users/{uid}/photos/{allPaths=**} {
+    // House-scoped photos — membership verified via Firestore
+    match /houses/{houseId}/photos/{filename} {
+      allow read, write: if request.auth != null &&
+        firestore.exists(/databases/(default)/documents/houses/$(houseId)/members/$(request.auth.uid));
+    }
+    // Legacy user-scoped photos — backwards compat for migrated photo URLs
+    match /users/{uid}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
   }
@@ -415,8 +616,11 @@ service firebase.storage {
 
 ## Security Notes
 
-- Firestore rules prevent any user from reading or writing another user's items — the UID in the path must match `request.auth.uid`.
-- Storage rules apply the same UID check — users can only upload/read their own photos.
-- The Gemini API key is injected at build time via `VITE_GEMINI_API_KEY`. It is visible in the built JS bundle. This is acceptable for a personal-use app; for production multi-tenant use, proxy calls through a Cloud Function.
+- Firestore rules use `isMember(houseId)` and `isOwner(houseId)` helpers that verify membership via a Firestore `exists()`/`get()` call inside the rule expression. No user can access another house's data unless explicitly added as a member.
+- The `invites` collection is readable by all signed-in users so the app can query by `inviteeEmail`. The delete rule limits who can remove an invite to the invitee or the inviter.
+- User profile documents (`users/{uid}`) are readable by all signed-in users. This is intentional — `sendInvite` must look up invitees by email. Only the owner can write their own profile doc.
+- Storage rules for house-scoped photos call `firestore.exists()` to verify membership — this cross-service check ensures photo access and Firestore membership stay in sync.
+- The Gemini API key is injected at build time via `VITE_GEMINI_API_KEY`. It is visible in the built JS bundle. Acceptable for a personal-use app; for multi-tenant production use, proxy through a Cloud Function.
 - `.env` is in `.gitignore` — credentials are never committed.
-- Photo files remain in Storage when `photoUrl` is cleared from Firestore (no cascading delete). For a personal-use app this is acceptable; Storage costs remain negligible.
+- Photo files remain in Storage when `photoUrl` is cleared from Firestore (no cascading delete). Storage costs remain negligible for personal use.
+- The Firebase service account used in CI must have the "Service Usage Consumer" IAM role to deploy Firestore and Storage rules — see `docs/MANUAL_STEPS.md` step 10.
