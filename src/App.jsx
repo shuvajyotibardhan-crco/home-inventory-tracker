@@ -254,6 +254,7 @@ export default function App() {
   const [viewerUrl, setViewerUrl] = useState(null)
   const [viewerItemId, setViewerItemId] = useState(null)
   const [merging, setMerging] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   // ── Auth listener ────────────────────────────────────────────────────────────
 
@@ -605,6 +606,13 @@ export default function App() {
     setDeletingItem(null)
   }
 
+  async function handleBulkDelete() {
+    const batch = writeBatch(db)
+    selectedItemIds.forEach(id => batch.delete(doc(db, 'houses', activeHouseId, 'items', id)))
+    await batch.commit()
+    setSelectedItemIds(new Set())
+    setConfirmBulkDelete(false)
+  }
 
   // ── Filters & analytics ───────────────────────────────────────────────────────
 
@@ -622,6 +630,12 @@ export default function App() {
     const total = items.reduce((s, i) => s + (i.value || 0), 0)
     const valued = items.filter(i => i.value != null).length
     return { total, totalItems: items.length, valued, pending: items.length - valued }
+  }, [items])
+
+  // All unique rooms: ROOMS constant + any custom rooms already in this house's items
+  const allRooms = useMemo(() => {
+    const extra = items.map(i => i.room).filter(r => !ROOMS.includes(r))
+    return [...ROOMS, ...new Set(extra)]
   }, [items])
 
   const roomStats = useMemo(() => {
@@ -749,7 +763,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Escape') return
-      setShowAddModal(false); setDeletingItem(null)
+      setShowAddModal(false); setDeletingItem(null); setConfirmBulkDelete(false)
       setScannedItems(null); setViewerUrl(null); setViewerItemId(null)
       setLinkingItemIds(null); setShowProfileModal(false); setShowCreateHouseModal(false)
       setShowShareModal(false); setShowHouseSwitcher(false)
@@ -1033,10 +1047,16 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
               </label>
               <div className="flex gap-2 ml-auto flex-wrap">
                 {selectedItemIds.size > 0 && (
-                  <button onClick={() => setLinkingItemIds([...selectedItemIds])}
-                    className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
-                    <Link2 className="w-4 h-4" /> Link Photo to {selectedItemIds.size} selected
-                  </button>
+                  <>
+                    <button onClick={() => setLinkingItemIds([...selectedItemIds])}
+                      className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
+                      <Link2 className="w-4 h-4" /> Link Photo to {selectedItemIds.size} selected
+                    </button>
+                    <button onClick={() => setConfirmBulkDelete(true)}
+                      className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
+                      <Trash2 className="w-4 h-4" /> Delete {selectedItemIds.size} selected
+                    </button>
+                  </>
                 )}
                 <button onClick={() => scanInputRef.current?.click()}
                   className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
@@ -1102,7 +1122,19 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="w-10 px-3 py-3"><span className="sr-only">Select</span></th>
+                        <th className="w-10 px-3 py-3">
+                          <button onClick={() => {
+                            if (selectedItemIds.size === filteredItems.length && filteredItems.length > 0) {
+                              setSelectedItemIds(new Set())
+                            } else {
+                              setSelectedItemIds(new Set(filteredItems.map(i => i.id)))
+                            }
+                          }}>
+                            {selectedItemIds.size > 0 && selectedItemIds.size === filteredItems.length
+                              ? <CheckSquare className="w-4 h-4 text-blue-600" />
+                              : <Square className="w-4 h-4 text-slate-300" />}
+                          </button>
+                        </th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Room</th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Item</th>
                         <th className="text-right px-4 py-3 font-medium text-slate-600">Value</th>
@@ -1406,10 +1438,12 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Room</label>
-              <select value={formRoom} onChange={e => setFormRoom(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
-                {ROOMS.map(r => <option key={r}>{r}</option>)}
-              </select>
+              <input list="room-options" value={formRoom} onChange={e => setFormRoom(e.target.value)}
+                placeholder="Select or type a room name"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              <datalist id="room-options">
+                {allRooms.map(r => <option key={r} value={r} />)}
+              </datalist>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Value ($)</label>
@@ -1423,6 +1457,17 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
                 {editingItem ? 'Save Changes' : 'Add Item'}
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Bulk Delete Modal ─────────────────────────────────────────────────── */}
+      {confirmBulkDelete && (
+        <Modal title="Delete Selected Items" onClose={() => setConfirmBulkDelete(false)}>
+          <p className="text-sm text-slate-600 mb-6">Delete <strong>{selectedItemIds.size} item{selectedItemIds.size !== 1 ? 's' : ''}</strong>? This can't be undone.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setConfirmBulkDelete(false)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+            <button onClick={handleBulkDelete} className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition">Delete</button>
           </div>
         </Modal>
       )}

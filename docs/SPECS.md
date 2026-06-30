@@ -324,6 +324,26 @@ async function uploadPhoto(file, itemIds = [], activeHouseId):
   return url
 ```
 
+### Bulk Delete
+```
+async function handleBulkDelete(selectedItemIds, activeHouseId):
+  batch = writeBatch(db)
+  for id in selectedItemIds:
+    batch.delete(doc(db, "houses", activeHouseId, "items", id))
+  await batch.commit()
+  setSelectedItemIds(new Set())
+  setConfirmBulkDelete(false)
+```
+
+### allRooms (useMemo)
+```
+allRooms = [
+  ...ROOMS,
+  ...new Set(items.map(i => i.room).filter(r => !ROOMS.includes(r)))
+]
+```
+Combines the predefined room list with any custom rooms the user has added. Used as the `<datalist>` source in the Add/Edit item form.
+
 ### Link Photo to Items
 ```
 async function handleLinkPhoto(photoUrl, itemIds, activeHouseId):

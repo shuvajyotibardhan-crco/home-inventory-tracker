@@ -95,7 +95,7 @@ A premium single-page home asset and inventory management app for homeowners who
 **User story:** As a user, I want to add, edit, and delete inventory items manually so that I can keep my records accurate over time.
 
 **Acceptance Criteria:**
-1. An "Add Item" button shall open a modal form with fields: item name (text), room (dropdown from the 14 defined rooms), and estimated value (number, optional).
+1. An "Add Item" button shall open a modal form with fields: item name (text), room (combobox — shows existing room names as autocomplete suggestions but also accepts free-text for new rooms), and estimated value (number, optional).
 2. The form shall validate that item name is not empty before saving.
 3. Submitting the add form shall write the new item to Firestore and close the modal.
 4. Each grid row's Edit button shall open a pre-filled modal allowing the user to change name, room, or value.
@@ -103,6 +103,10 @@ A premium single-page home asset and inventory management app for homeowners who
 6. Each grid row's Delete button shall open a confirmation modal asking the user to confirm before deletion.
 7. Confirming deletion shall remove the item from Firestore permanently.
 8. All modals shall be dismissible via a close button or pressing Escape.
+9. Each inventory row shall have a checkbox. Checking one or more rows shall reveal a "Delete X selected" button in the toolbar.
+10. A "Select All" checkbox in the table header shall select or deselect all currently visible (filtered) rows at once.
+11. Clicking "Delete X selected" shall open a confirmation modal; confirming shall batch-delete all selected items in a single Firestore batch write and clear the selection.
+12. A room name typed in the room combobox that does not exist in the predefined list shall be accepted and saved as-is; it shall also appear as a suggestion in future item forms for this house.
 
 **Test Plan:**
 

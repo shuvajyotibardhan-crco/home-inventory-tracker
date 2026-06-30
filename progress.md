@@ -1,41 +1,45 @@
 # Project State
 - **Last Updated:** 2026-06-30
 - **Current Branch:** main
-- **Current Task:** T20 — push to GitHub, set secrets, verify deployment
 
-## Kickoff Checklist
-- [x] Root files created (CLAUDE.md, progress.md, .gitignore, .env.example, README.md)
-- [x] docs/PLAN.md — committed
-- [x] docs/REQUIREMENTS.md — committed
-- [x] docs/DESIGN.md — committed
-- [x] docs/SPECS.md — committed
-- [x] docs/TASKS.md — committed
-- [x] docs/MANUAL_STEPS.md — committed
-- [x] docs/architecture.drawio + .svg — committed
-- [x] .github/workflows/deploy.yml — committed
-- [x] src/App.jsx — full implementation committed (all F1–F13)
-- [x] Git init + first commit (ccb9e35)
-- [ ] GitHub remote created and pushed
-- [ ] Firebase project created + services enabled
-- [ ] GitHub Secrets set
-- [ ] First GitHub Actions deploy verified
-
-## Completed Actions
-1. [x] All docs written (PLAN, REQUIREMENTS, DESIGN, SPECS, TASKS, MANUAL_STEPS)
-2. [x] Vite + React + Tailwind + Firebase scaffold
-3. [x] Full App.jsx implementation (F1–F13, all features)
-4. [x] Firebase config files (firebase.json, .firebaserc, firestore.rules, storage.rules)
-5. [x] GitHub Actions deploy workflow
-6. [x] First commit — 28 files, ccb9e35
-
-## Current Logic Context
+## Architecture (current)
 - Stack: React 18 + Vite + Tailwind + Firebase Auth/Firestore/Storage + Gemini 2.5 Flash
-- Single src/App.jsx, all state/logic/UI in one file
-- 72 default items seeded on first sign-in
-- Gemini model: gemini-2.5-flash-preview-05-20
-- Firestore path: users/{uid}/items/{itemId}
-- Storage path: users/{uid}/photos/{timestamp}.{ext}
+- Single `src/App.jsx` — all state/logic/UI
+- Data scoped to houses: `houses/{houseId}/items`, `houses/{houseId}/photos`, `houses/{houseId}/members`
+- User profiles: `users/{uid}` with `houseIds[]`
+- Pending invites: `invites/{inviteId}`
+- Storage: `houses/{houseId}/photos/{timestamp}.{ext}`
+- Firestore rules: `isMember` / `isOwner` helper functions
+- Deploy: GitHub Actions → Firebase Hosting on push to `main`
+
+## Completed Features
+- F1 Google Sign-In
+- F2 First-run house creation + one-time migration (deletes placeholder data, writes 69 real items for 158 N Edge Cliff St)
+- F3 Inventory data grid
+- F4 Manual CRUD with room combobox (select existing or type new room)
+- F5 AI document scan (Gemini 2.5 Flash, exponential backoff)
+- F6 Live search + room filter
+- F7 Missing prices filter
+- F8 Financial analytics dashboard
+- F9 CSV export
+- F11 Firestore real-time persistence (house-scoped)
+- F13 Photo gallery + item linking
+- F14 House management (create, switch, edit address, profile modal)
+- F15 House sharing (invite by email, pending invites, accept/decline)
+- Multi-select deletion (checkbox per row, Select All, bulk delete with confirmation)
+
+## Rooms for 158 N Edge Cliff St
+Laundry Room, Kids Room, Guest Room, Flex Room, Master Bed, Loft,
+Living Room, Dining Room, Kitchen, Garage, Backyard, Front Yard, Front Porch
+
+## Known Issues / Pending
+- Firestore + Storage rules deploy in CI failing: service account needs
+  "Service Usage Consumer" IAM role (GCP Console → IAM → firebase-adminsdk).
+  Until added, **manually publish Firestore rules in Firebase Console** before
+  first sign-in so initFirstHouse can create the houses/ collection.
+  See docs/MANUAL_STEPS.md step 10.
+- VITE_GEMINI_API_KEY GitHub Secret is empty — user must paste key in-app at runtime.
 
 ## Next Immediate Step
-- Create GitHub repo → push → set 8 GitHub Secrets → watch first deploy
-- See docs/MANUAL_STEPS.md for the full checklist
+- Publish Firestore rules in Firebase Console (paste firestore.rules content → Publish)
+- Refresh app → migration runs → 69 real items appear
