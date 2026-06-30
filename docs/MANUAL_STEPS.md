@@ -117,7 +117,23 @@ npm run dev
 
 ---
 
-## 10. Trigger First Deployment
+## 10. Grant Service Account the "Service Usage Consumer" Role (required for rules deploy)
+
+Firebase's CLI checks whether APIs are enabled before deploying Firestore and Storage rules. The default Firebase Admin SDK service account doesn't have permission to do that check, so the rules deploy step will be skipped until you add this role.
+
+1. Go to [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam)
+2. Make sure the right project (`home-inventory-tracker-f94b1`) is selected in the top bar
+3. Find the row for `firebase-adminsdk-fbsvc@home-inventory-tracker-f94b1.iam.gserviceaccount.com`
+4. Click the pencil (Edit) icon on that row
+5. Click **+ Add another role**
+6. Search for **Service Usage Consumer** and select it
+7. Click **Save**
+
+After saving, the next push to `main` will deploy Firestore and Storage rules automatically.
+
+---
+
+## 11. Trigger First Deployment
 
 Once all secrets are set:
 ```bash

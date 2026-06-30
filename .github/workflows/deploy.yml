@@ -44,7 +44,10 @@ jobs:
           channelId: live
           projectId: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
 
+      # Requires the service account to have the "Service Usage Consumer" role
+      # in GCP Console → IAM & Admin → IAM. See docs/MANUAL_STEPS.md.
       - name: Deploy Firestore and Storage rules
+        continue-on-error: true
         run: |
           npx firebase-tools@latest deploy \
             --only firestore:rules,storage \
