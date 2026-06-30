@@ -31,6 +31,11 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -39,21 +44,9 @@ jobs:
           channelId: live
           projectId: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
 
-      - name: Deploy Firestore rules
+      - name: Deploy Firestore and Storage rules
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
-          npx firebase-tools@latest deploy --only firestore:rules \
+          npx firebase-tools@latest deploy \
+            --only firestore:rules,storage \
             --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} \
-            --token "$(cat /tmp/sa.json | python3 -c "import sys,json; print(json.load(sys.stdin).get('private_key',''))")" || \
-          GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json \
-          npx firebase-tools@latest deploy --only firestore:rules \
-            --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --non-interactive
-          rm /tmp/sa.json
-
-      - name: Deploy Storage rules
-        run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
-          GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json \
-          npx firebase-tools@latest deploy --only storage \
-            --project ${{ secrets.VITE_FIREBASE_PROJECT_ID }} --non-interactive
-          rm /tmp/sa.json
+            --non-interactive
