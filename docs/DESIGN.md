@@ -26,13 +26,15 @@ The entire application. It is divided into logical sections within a single file
 - `handleSignIn` calls `signInWithPopup` with `GoogleAuthProvider`. `handleSignOut` calls `signOut`.
 
 **Firestore layer**
-- `useEffect` (triggered when `user` changes) subscribes to `onSnapshot` on `users/{uid}/items`. Unsubscribes on cleanup.
-- On first load, if the snapshot is empty, `seedDefaultData()` is called — a Firestore batch write of all 72 default items.
+- Two `useEffect` hooks (both triggered when `user` changes) subscribe to `onSnapshot` on `users/{uid}/items` and `users/{uid}/photos`. Both unsubscribe on cleanup.
+- On first items load, if the snapshot is empty, `seedDefaultData()` is called — a Firestore batch write of all 72 default items.
 - `addItem`, `updateItem`, `deleteItem` call `addDoc`, `updateDoc`, `deleteDoc` directly.
 
 **Storage layer**
-- `uploadPhoto(file, targetItemIds)` uploads to `users/{uid}/photos/{timestamp}-{filename}` via `uploadBytesResumable`, tracks progress, then calls `getDownloadURL` and writes the URL to each targeted item's Firestore document.
-- `removePhoto(itemId)` calls `updateDoc` to set `photoUrl` to `null`.
+- `uploadPhoto(file, itemIds)` uploads to `users/{uid}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `users/{uid}/photos` (URL + original filename). Optionally links to specified item IDs immediately.
+- `handleLinkPhoto(photoUrl, itemIds)` writes the chosen URL to each item's `photoUrl` field — called when the user picks from the gallery picker.
+- `handleUnlinkPhoto(itemId)` calls `updateDoc` to set `photoUrl` to `null`; the Storage file and gallery record are left intact.
+- `handleDeletePhoto(photoId)` deletes the Firestore metadata document from `users/{uid}/photos`; the Storage file and any existing item `photoUrl` links remain.
 
 **AI scan layer**
 - `handleScanImage(file)` reads the file as base64, builds the Gemini API request body (with JSON schema in `generationConfig`), and calls `callGeminiWithBackoff`.
@@ -40,18 +42,19 @@ The entire application. It is divided into logical sections within a single file
 - On success, parsed items are placed in `scannedItems` state and the review modal opens.
 
 **State**
-- `items` — live array from Firestore snapshot.
+- `items` — live array from Firestore items snapshot.
+- `photos` — live array from Firestore photos snapshot (gallery metadata).
 - `user` — Firebase Auth user object or `null`.
 - `authLoading` — boolean, true while `onAuthStateChanged` is resolving.
 - `seeding` — boolean, true while the first-run batch write is in progress.
-- `searchText`, `roomFilter`, `missingPriceOnly` — filter state.
-- `selectedItemIds` — Set of item IDs checked for multi-photo attach.
+- `searchText`, `roomFilter`, `missingPricesOnly` — filter state.
+- `selectedItemIds` — Set of item IDs checked for multi-item photo linking.
+- `linkingItemIds` — array of item IDs awaiting a photo selection in the picker modal; `null` when closed.
+- `isDragging` — boolean, true while a drag is active over the Photos tab upload zone.
 - `scannedItems` — array of items parsed from Gemini, held pending review.
-- `uploadProgress` — number 0–100 for the active upload.
-- Modal states: `showAddModal`, `showEditModal`, `showDeleteModal`, `showScanReview`, `showResetConfirm`, `showPhotoViewer`.
-- `editTarget` — the item currently being edited.
-- `deleteTarget` — the item pending deletion.
-- `photoViewerUrl` — URL for the full-size viewer.
+- `uploadProgress` — number 0–100 for the active upload, or `null` when idle.
+- `viewerUrl` / `viewerItemId` — URL and item ID for the full-size photo viewer modal.
+- Modal states: `showAddModal`, `showResetModal`, `deletingItem`, `scannedItems`, `linkingItemIds`, `viewerUrl`.
 
 **Derived values (useMemo)**
 - `filteredItems` — `items` filtered by `searchText`, `roomFilter`, `missingPriceOnly`.
@@ -74,8 +77,8 @@ localStorage is device-local and lost on browser clear. Firestore gives per-user
 ### Firebase Storage for photos
 Firestore documents have a 1 MB size limit — base64 images can't be stored inline. Firebase Storage is the natural pairing: photos live in Storage, only the download URL lives in the Firestore item document.
 
-### One photo URL per item, shared reference
-When a user attaches one photo to multiple items, the same Storage URL is written to each item's `photoUrl` field. This avoids a separate join collection while still covering the multi-item use case. Removing a photo from one item doesn't affect other items linked to the same file.
+### Central photo gallery with item linking
+Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage and a lightweight metadata document in `users/{uid}/photos`. Items don't own photos — they hold a reference URL. This means the same photo can link to any number of items, and deleting a gallery record doesn't cascade to items. The separation keeps item CRUD simple and gives the gallery its own managed lifecycle.
 
 ### Gemini JSON schema enforcement
 Setting `response_mime_type: "application/json"` and `response_schema` in `generationConfig` removes the need for fragile regex parsing. The model is constrained to return a valid array of `{ room, item, value }` objects.
