@@ -63,7 +63,9 @@ The entire application. It is divided into logical sections within a single file
 - `authLoading` — boolean, true while `onAuthStateChanged` is resolving.
 - `seeding` — boolean, true while the first-run migration is in progress.
 - `searchText`, `roomFilter`, `missingPricesOnly` — filter state.
-- `selectedItemIds` — Set of item IDs checked for multi-item photo linking.
+- `selectedItemIds` — Set of item IDs currently checked. Drives both "Link Photo to X selected" and "Delete X selected" toolbar buttons.
+- `confirmBulkDelete` — boolean, true when the bulk-delete confirmation modal is open.
+- `allRooms` — derived (useMemo): ROOMS constant + any custom room names already present in the house's items. Used as the `<datalist>` source for the room combobox in the Add/Edit modal.
 - `linkingItemIds` — array of item IDs awaiting a photo selection in the picker modal; `null` when closed.
 - `isDragging` — boolean, true while a drag is active over the Photos tab upload zone.
 - `scannedItems` — array of items parsed from Gemini, held pending review.
