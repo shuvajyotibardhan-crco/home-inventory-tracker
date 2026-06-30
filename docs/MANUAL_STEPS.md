@@ -133,22 +133,26 @@ After saving, the next push to `main` will deploy Firestore and Storage rules au
 
 ---
 
-## 11. Grant the Firebase Storage Service Agent Access to Firestore (cross-service rules)
+## 11. Enable Cross-Service Calls for Storage Rules (two parts — both required)
 
-`storage.rules` calls `firestore.exists(...)` to check house membership before allowing a photo read/write. That cross-service call needs its own one-time IAM grant on a separate, Google-managed service agent — distinct from the GitHub Actions service account above.
+`storage.rules` calls `firestore.exists(...)` to check house membership before allowing a photo read/write. This is a "cross-service rule," and it needs two separate one-time grants. Our deploy runs `firebase deploy --non-interactive`, which skips the consent flow that normally sets both of these up automatically when you publish from the Firebase Console — so on a CLI/CI-only project, you have to do them by hand. Skipping either one leaves every `firestore.exists()` call silently evaluating to `false`, so uploads fail with `storage/unauthorized` even though the rules themselves deployed without error.
 
-Normally the Firebase CLI prompts you to accept this grant the first time you publish rules containing `firestore.get()`/`firestore.exists()`. Our deploy runs `firebase deploy --non-interactive`, which skips that prompt, so the grant never happens automatically. Without it, every `firestore.exists()` call silently evaluates to `false`, and uploads fail with `storage/unauthorized` even though the rules themselves deployed correctly.
+**Part A — IAM role on the Storage service agent.**
 
 1. Go to [console.cloud.google.com/iam-admin/iam](https://console.cloud.google.com/iam-admin/iam)
 2. Make sure the right project (`home-inventory-tracker-f94b1`) is selected in the top bar
 3. Check **"Include Google-provided role grants"** near the top of the page — this service agent is hidden otherwise
 4. Find the row for `service-<project-number>@gcp-sa-firebasestorage.iam.gserviceaccount.com` (auto-created by Firebase; you don't need to look up the project number yourself)
-5. Click the pencil (Edit) icon on that row
-6. Click **+ Add another role**
-7. Search for **Firebase Rules Firestore Service Agent** and select it
-8. Click **Save**
+5. Click the pencil (Edit) icon on that row → **+ Add another role** → search **Firebase Rules Firestore Service Agent** → select it → **Save**
 
-This is a one-time grant — it survives future rules deploys, even non-interactive ones.
+**Part B — the project-level toggle (this is the part that actually mattered).** The IAM role above is necessary but, on its own, did not fix the failure here — the project itself also needs to be switched on to *execute* cross-service calls at all. There's no CLI flag for this; it only shows up in the Storage Rules editor.
+
+1. Firebase Console → **Build** → **Storage** → **Rules** tab
+2. If the project isn't yet enabled for this, you'll see a banner: *"Your rules make use of cross-service database calls, but your project is not configured to execute those calls."*
+3. Click the button/link in that banner and confirm/allow
+4. Click **Publish** once to confirm the rules are live with cross-service calls now actually enabled
+
+Both parts are one-time grants — they survive future rules deploys, including non-interactive CI ones. If a new project ever hits `storage/unauthorized` despite rules looking correct and Part A done, check the Storage Rules tab in the Console for that banner first — it's the part the CLI can't set up for you.
 
 ---
 
