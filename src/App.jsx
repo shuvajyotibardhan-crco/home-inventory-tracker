@@ -290,6 +290,10 @@ export default function App() {
         setItems(loaded)
         setDataLoading(false)
       }
+    }, err => {
+      console.error('Firestore error:', err)
+      setDataLoading(false)
+      setScanError(`Firestore error: ${err.message} — check your security rules.`)
     })
     return unsub
   }, [user])
