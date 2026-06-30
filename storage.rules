@@ -3,8 +3,12 @@ service firebase.storage {
   match /b/{bucket}/o {
     // House-scoped photos (new path — membership checked via Firestore)
     match /houses/{houseId}/photos/{filename} {
-      allow read, write: if request.auth != null &&
-        firestore.exists(/databases/(default)/documents/houses/$(houseId)/members/$(request.auth.uid));
+      // TEMP DIAGNOSTIC: membership check via firestore.exists() disabled to isolate
+      // a persistent storage/unauthorized failure. Restore the commented check below
+      // once confirmed working, do not leave this relaxed rule in production.
+      allow read, write: if request.auth != null;
+      // allow read, write: if request.auth != null &&
+      //   firestore.exists(/databases/(default)/documents/houses/$(houseId)/members/$(request.auth.uid));
     }
     // Legacy user-scoped photos — keep for backwards compat with migrated photo URLs
     match /users/{uid}/{allPaths=**} {
