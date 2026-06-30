@@ -1,6 +1,12 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // House-scoped photos (new path — membership checked via Firestore)
+    match /houses/{houseId}/photos/{filename} {
+      allow read, write: if request.auth != null &&
+        firestore.exists(/databases/(default)/documents/houses/$(houseId)/members/$(request.auth.uid));
+    }
+    // Legacy user-scoped photos — keep for backwards compat with migrated photo URLs
     match /users/{uid}/{allPaths=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
