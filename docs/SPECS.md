@@ -8,10 +8,20 @@
   id: string          // Firestore auto-generated doc ID
   room: string        // One of the 14 defined rooms
   name: string        // Item name, non-empty
-  value: number|null  // Estimated value in GBP, null if unknown
-  photoUrl: string|null  // Firebase Storage download URL, null if no photo
+  value: number|null  // Estimated value in USD, null if unknown
+  photoUrl: string|null  // Firebase Storage download URL, null if no photo linked
   createdAt: Timestamp   // Firestore server timestamp, set on create
   updatedAt: Timestamp   // Firestore server timestamp, set on update
+}
+```
+
+### Photo (Firestore document — `users/{uid}/photos/{photoId}`)
+```
+{
+  id: string          // Firestore auto-generated doc ID
+  url: string         // Firebase Storage download URL
+  name: string        // Original filename (e.g. "living-room.jpg")
+  uploadedAt: Timestamp  // Firestore server timestamp, set on upload
 }
 ```
 
@@ -54,6 +64,8 @@ users/
   {uid}/
     items/
       {itemId}/     ← one document per InventoryItem
+    photos/
+      {photoId}/    ← one document per uploaded Photo (gallery metadata)
 ```
 
 Security rules enforce `request.auth.uid == uid` for all reads and writes.
@@ -82,9 +94,9 @@ Utility Room | Loft / Attic | Garden / Shed | Hallway
 
 ## Default Seed Dataset (72 items)
 
-72 items spread across all 14 rooms. One item (`Christmas Decorations`) has a null value. All values are in GBP.
+72 items spread across all 14 rooms. One item (`Christmas Decorations`) has a null value. All values are in USD.
 
-| Room | Item | Value (£) |
+| Room | Item | Value ($) |
 |------|------|-----------|
 | Living Room | Sofa (3-seater) | 1200 |
 | Living Room | Coffee Table | 250 |
@@ -242,21 +254,40 @@ async function resetToDefaults(uid):
     set seeding = false
 ```
 
-### Photo Upload (single or multi-item)
+### Photo Upload (to gallery)
 ```
-async function uploadPhoto(file, targetItemIds, uid):
-  if file.size > 10_485_760: show error; return
-  filename = `${Date.now()}-${file.name}`
+async function uploadPhoto(file, itemIds = [], uid):
+  if file.size > 10_485_760: show error; return null
+  filename = `${Date.now()}.${ext}`
   storageRef = ref(storage, `users/${uid}/photos/${filename}`)
   uploadTask = uploadBytesResumable(storageRef, file)
   uploadTask.on('state_changed',
-    snapshot => set uploadProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+    snapshot => set uploadProgress = (bytes / total) * 100
   )
   await uploadTask
   url = await getDownloadURL(storageRef)
-  for itemId in targetItemIds:
-    await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: url, updatedAt: serverTimestamp() })
-  set uploadProgress = 0
+  // Save metadata to photos gallery collection
+  await addDoc(collection(db, "users", uid, "photos"), { url, name: file.name, uploadedAt: serverTimestamp() })
+  // Optionally link to specific items immediately
+  for itemId in itemIds:
+    await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: url })
+  set uploadProgress = null
+  return url
+```
+
+### Link Photo to Items
+```
+async function handleLinkPhoto(photoUrl, itemIds, uid):
+  for itemId in itemIds:
+    await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: url })
+  close link modal
+```
+
+### Unlink Photo from Item
+```
+async function handleUnlinkPhoto(itemId, uid):
+  await updateDoc(doc(db, "users", uid, "items", itemId), { photoUrl: null })
+  // Photo file remains in Storage and gallery — no cascading delete
 ```
 
 ### CSV Export

@@ -52,7 +52,7 @@ A premium single-page home asset and inventory management app for homeowners who
 **User story:** As a new user, I want the app to start with a realistic sample dataset so that I can immediately see what the app looks like in use.
 
 **Acceptance Criteria:**
-1. The app shall seed the following 14 rooms and 63+ items into a new user's Firestore on first sign-in: Laundry Room, Kids Room, Guest Room, Flex Room, Master Bed, Loft, Living Room, Dining Room, Kitchen, Garage, Backyard, Front Yard, Front Porch.
+1. The app shall seed the following 14 rooms and 72 items into a new user's Firestore on first sign-in: Laundry Room, Kids Room, Guest Room, Flex Room, Master Bed, Loft, Living Room, Dining Room, Kitchen, Garage, Backyard, Front Yard, Front Porch.
 2. Each seeded item shall include a room name, item name, and estimated value (or `null` if unpriced).
 3. The seeding shall use a Firestore batch write for atomicity.
 4. A loading indicator shall be displayed while seeding is in progress.
@@ -62,7 +62,7 @@ A premium single-page home asset and inventory management app for homeowners who
 
 | Step | Expected Result |
 |------|----------------|
-| Sign in as a brand-new user | Loading indicator appears briefly, then 63+ items visible across 14 rooms |
+| Sign in as a brand-new user | Loading indicator appears briefly, then 72 items visible across 14 rooms |
 | Sign out and sign back in | No re-seed; same items visible (including any edits made) |
 | Use "Reset to Defaults" then sign out/in | Items restored to original dataset |
 
@@ -238,7 +238,7 @@ A premium single-page home asset and inventory management app for homeowners who
 
 **Acceptance Criteria:**
 1. A "Reset to Defaults" button shall open a confirmation modal warning the user that all current items will be deleted and replaced.
-2. Confirming the reset shall delete all items in the user's Firestore collection and re-seed the 63+ default items.
+2. Confirming the reset shall delete all items in the user's Firestore collection and re-seed the 72 default items.
 3. A loading indicator shall be displayed during the reset and re-seed operation.
 4. Cancelling the confirmation modal shall leave all data unchanged.
 
@@ -247,7 +247,7 @@ A premium single-page home asset and inventory management app for homeowners who
 | Step | Expected Result |
 |------|----------------|
 | Click "Reset to Defaults", then cancel | No data changed |
-| Click "Reset to Defaults", then confirm | Loading shown; all items replaced with original 63+ dataset |
+| Click "Reset to Defaults", then confirm | Loading shown; all items replaced with original 72 dataset |
 | Check Firestore after reset | Old custom items gone; default items present |
 
 ---
@@ -278,8 +278,8 @@ A premium single-page home asset and inventory management app for homeowners who
 
 **Acceptance Criteria:**
 1. On first sign-in, the app shall check whether the user's `users/{uid}/items` collection is empty.
-2. If empty, the app shall batch-write all 63+ default items to Firestore before showing the inventory view.
-3. The seed data shall exactly match the dataset specified in the project brief (14 rooms, 63+ items, with correct values and nulls).
+2. If empty, the app shall batch-write all 72 default items to Firestore before showing the inventory view.
+3. The seed data shall exactly match the dataset specified in the project brief (14 rooms, 72 items, with correct values and nulls).
 4. A full-screen loading overlay shall be shown during seeding with a "Setting up your inventory…" message.
 5. The app must not seed data if items already exist, regardless of how many items there are.
 6. The "Reset to Defaults" action (F10) shall use the same seed dataset and logic as the first-run seed.
@@ -291,33 +291,39 @@ A premium single-page home asset and inventory management app for homeowners who
 | Sign in as a new user | Loading overlay shows "Setting up your inventory…"; then full grid appears |
 | Sign out and sign back in | No re-seed; existing items shown |
 | Add 5 items, sign out, sign back in | No re-seed; all items (original + added) shown |
-| Use "Reset to Defaults" | Original 63+ items restored exactly |
+| Use "Reset to Defaults" | Original 72 items restored exactly |
 
 ---
 
-## Feature 13 — Item Photo Upload
+## Feature 13 — Photo Gallery and Item Linking
 
-**User story:** As a user, I want to upload a photo and link it to one or more inventory items so that I have a visual record of my assets for insurance or reference purposes.
+**User story:** As a user, I want to upload photos to a central gallery and link them to inventory items so that I have a visual record of my assets for insurance or reference purposes.
 
 **Acceptance Criteria:**
-1. Each item row in the grid shall display a camera icon button to initiate a photo upload for that single item.
-2. The app shall also support multi-item photo linking: the user shall be able to select multiple items via checkboxes, then click an "Attach Photo to Selected" button to upload one photo and link it to all selected items.
-3. Clicking any upload trigger shall open a file input accepting common image formats (JPEG, PNG, WEBP, HEIC).
-4. The selected image shall be uploaded to Firebase Storage at the path `users/{uid}/photos/{filename}`.
-5. On upload success, the resulting download URL shall be saved to the `photoUrl` field of each targeted item's Firestore document.
-6. An upload progress indicator shall be shown while the photo is being uploaded.
-7. Items with a photo shall display a thumbnail in the grid row.
-8. Clicking a thumbnail shall open a full-size image viewer modal.
-9. The user shall be able to remove a photo from an item (sets `photoUrl` back to `null`; does not delete the file from Storage).
-10. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
+1. A dedicated "Photos" tab shall display a drag-and-drop upload zone accepting multiple image files at once (JPEG, PNG, WEBP, HEIC).
+2. Uploaded photos shall be stored in Firebase Storage at `users/{uid}/photos/{timestamp}.{ext}` and their metadata (URL, filename, upload timestamp) shall be saved to the `users/{uid}/photos` Firestore collection.
+3. The Photos tab shall display all uploaded photos in a responsive grid, showing a thumbnail, filename, and count of items currently linked to each photo.
+4. Each photo in the gallery shall have a delete button that removes the metadata document from Firestore (the Storage file and any existing `photoUrl` links on items are left unchanged).
+5. Each item row in the inventory grid shall display a "Link" button if no photo is linked, or a thumbnail if a photo is already linked.
+6. Clicking "Link" on an item row shall open a photo picker modal showing all gallery photos; clicking a photo in the picker shall set that photo's URL as the item's `photoUrl`.
+7. The user shall be able to select multiple items via checkboxes and click "Link Photo to X selected" to link one gallery photo to all selected items at once.
+8. The photo picker modal shall include an "Upload new photo" option that uploads directly and links the result to the target item(s).
+9. Clicking a thumbnail in the inventory grid shall open a full-size viewer modal with options to change or unlink the photo.
+10. Unlinking a photo shall set the item's `photoUrl` to `null`; the photo remains in the gallery.
+11. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
+12. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
 
 **Test Plan:**
 
 | Step | Expected Result |
 |------|----------------|
-| Click camera icon on a single item row | File picker opens |
-| Select a valid image | Upload progress shown; thumbnail appears in the row on completion |
-| Click the thumbnail | Full-size image viewer modal opens |
-| Select 3 items via checkboxes, click "Attach Photo to Selected", upload an image | Same photo URL written to all 3 items; thumbnails appear on all 3 rows |
-| Click remove photo on an item | Thumbnail disappears; `photoUrl` set to null in Firestore |
-| Select an image over 10 MB | Error message shown; no upload attempted |
+| Navigate to Photos tab | Upload zone and (initially empty) gallery shown |
+| Drag two images onto the upload zone | Both upload sequentially; progress bar visible; thumbnails appear in gallery |
+| Click the upload zone and select a file | File uploads; thumbnail added to gallery |
+| Check gallery card for a photo linked to 2 items | Card shows "2 items linked" |
+| Click "Link" on an item with no photo | Photo picker modal opens showing gallery thumbnails |
+| Click a photo in the picker | Modal closes; thumbnail appears on the item row |
+| Select 3 items via checkboxes, click "Link Photo to 3 selected" | Picker opens; clicking a photo links it to all 3 rows |
+| Click a thumbnail in inventory grid | Full-size viewer modal opens |
+| Click "Unlink photo" in viewer | Thumbnail gone from row; `photoUrl` null in Firestore; photo still in gallery |
+| Attempt to upload a file over 10 MB | Error message shown; no upload attempted |

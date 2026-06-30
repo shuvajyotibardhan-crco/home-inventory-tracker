@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { initializeApp } from 'firebase/app'
 import {
   getAuth,
@@ -42,6 +42,7 @@ import {
   Square,
   AlertCircle,
   Loader2,
+  Link2,
 } from 'lucide-react'
 
 // ─── Firebase init ────────────────────────────────────────────────────────────
@@ -217,13 +218,17 @@ export default function App() {
   const [seeding, setSeeding] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
 
+  // Photos gallery
+  const [photos, setPhotos] = useState([])
+  const [isDragging, setIsDragging] = useState(false)
+
   // Filters
   const [searchText, setSearchText] = useState('')
   const [roomFilter, setRoomFilter] = useState('All Rooms')
   const [missingPricesOnly, setMissingPricesOnly] = useState(false)
 
-  // UI tabs
-  const [activeTab, setActiveTab] = useState('inventory') // 'inventory' | 'analytics'
+  // Tabs
+  const [activeTab, setActiveTab] = useState('inventory')
 
   // Add/Edit modal
   const [showAddModal, setShowAddModal] = useState(false)
@@ -233,10 +238,8 @@ export default function App() {
   const [formValue, setFormValue] = useState('')
   const [formError, setFormError] = useState('')
 
-  // Delete modal
+  // Delete / Reset modals
   const [deletingItem, setDeletingItem] = useState(null)
-
-  // Reset modal
   const [showResetModal, setShowResetModal] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -249,12 +252,18 @@ export default function App() {
   const scanInputRef = useRef(null)
 
   // Photo upload
-  const [selectedItemIds, setSelectedItemIds] = useState(new Set())
   const [uploadProgress, setUploadProgress] = useState(null)
   const [uploadError, setUploadError] = useState('')
-  const photoInputRef = useRef(null)
-  const multiPhotoInputRef = useRef(null)
-  const [photoTargetId, setPhotoTargetId] = useState(null)
+  const galleryInputRef = useRef(null)
+  const pickerInputRef = useRef(null)
+
+  // Photo linking
+  const [linkingItemIds, setLinkingItemIds] = useState(null)
+
+  // Multi-select
+  const [selectedItemIds, setSelectedItemIds] = useState(new Set())
+
+  // Photo viewer
   const [viewerUrl, setViewerUrl] = useState(null)
   const [viewerItemId, setViewerItemId] = useState(null)
 
@@ -270,13 +279,10 @@ export default function App() {
     })
   }, [])
 
-  // ── Firestore listener + seeding ───────────────────────────────────────────
+  // ── Firestore items listener + seeding ─────────────────────────────────────
 
   useEffect(() => {
-    if (!user) {
-      setItems([])
-      return
-    }
+    if (!user) { setItems([]); return }
     setDataLoading(true)
     const itemsRef = collection(db, 'users', user.uid, 'items')
     const unsub = onSnapshot(itemsRef, async snapshot => {
@@ -298,6 +304,18 @@ export default function App() {
     return unsub
   }, [user])
 
+  // ── Firestore photos listener ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user) { setPhotos([]); return }
+    const photosRef = collection(db, 'users', user.uid, 'photos')
+    return onSnapshot(photosRef, snap => {
+      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      loaded.sort((a, b) => (b.uploadedAt?.seconds || 0) - (a.uploadedAt?.seconds || 0))
+      setPhotos(loaded)
+    }, err => console.error('Photos listener error:', err))
+  }, [user])
+
   async function seedDefaultData(uid, force = false) {
     const itemsRef = collection(db, 'users', uid, 'items')
     if (!force) {
@@ -314,39 +332,20 @@ export default function App() {
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   function openAdd() {
-    setFormName('')
-    setFormRoom(ROOMS[0])
-    setFormValue('')
-    setFormError('')
-    setEditingItem(null)
-    setShowAddModal(true)
+    setFormName(''); setFormRoom(ROOMS[0]); setFormValue(''); setFormError(''); setEditingItem(null); setShowAddModal(true)
   }
 
   function openEdit(item) {
-    setFormName(item.name)
-    setFormRoom(item.room)
-    setFormValue(item.value != null ? String(item.value) : '')
-    setFormError('')
-    setEditingItem(item)
-    setShowAddModal(true)
+    setFormName(item.name); setFormRoom(item.room); setFormValue(item.value != null ? String(item.value) : ''); setFormError(''); setEditingItem(item); setShowAddModal(true)
   }
 
   async function handleSaveItem() {
     if (!formName.trim()) { setFormError('Item name is required.'); return }
-    const payload = {
-      name: formName.trim(),
-      room: formRoom,
-      value: formValue !== '' ? parseFloat(formValue) : null,
-      updatedAt: serverTimestamp(),
-    }
+    const payload = { name: formName.trim(), room: formRoom, value: formValue !== '' ? parseFloat(formValue) : null, updatedAt: serverTimestamp() }
     if (editingItem) {
       await updateDoc(doc(db, 'users', user.uid, 'items', editingItem.id), payload)
     } else {
-      await addDoc(collection(db, 'users', user.uid, 'items'), {
-        ...payload,
-        photoUrl: null,
-        createdAt: serverTimestamp(),
-      })
+      await addDoc(collection(db, 'users', user.uid, 'items'), { ...payload, photoUrl: null, createdAt: serverTimestamp() })
     }
     setShowAddModal(false)
   }
@@ -392,10 +391,7 @@ export default function App() {
 
   const roomStats = useMemo(() => {
     const map = {}
-    items.forEach(i => {
-      if (!map[i.room]) map[i.room] = 0
-      map[i.room] += i.value || 0
-    })
+    items.forEach(i => { if (!map[i.room]) map[i.room] = 0; map[i.room] += i.value || 0 })
     const sorted = Object.entries(map).sort((a, b) => b[1] - a[1])
     const max = sorted[0]?.[1] || 1
     return sorted.map(([room, val]) => ({ room, val, pct: Math.round((val / (dashboardStats.total || 1)) * 100), width: Math.round((val / max) * 100) }))
@@ -407,27 +403,20 @@ export default function App() {
     const file = e.target.files?.[0]
     if (!file) return
     if (!geminiApiKey) { setShowKeyInput(true); return }
-    setScanning(true)
-    setScanError('')
+    setScanning(true); setScanError('')
     try {
       const base64 = await fileToBase64(file)
       const requestBody = {
-        contents: [{
-          parts: [
-            {
-              inlineData: { mimeType: file.type, data: base64 },
-            },
-            {
-              text: `You are a home inventory assistant. Extract every item visible in this image or document.
+        contents: [{ parts: [
+          { inlineData: { mimeType: file.type, data: base64 } },
+          { text: `You are a home inventory assistant. Extract every item visible in this image or document.
 Return ONLY a JSON array (no markdown, no prose) with objects having these fields:
 - "name": string (item name)
 - "room": string (one of: ${ROOMS.join(', ')})
-- "value": number or null (estimated GBP value if visible, otherwise null)
+- "value": number or null (estimated USD value if visible, otherwise null)
 
-Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
-            },
-          ],
-        }],
+Example: [{"name":"Sofa","room":"Living Room","value":800}]` },
+        ]}],
         generationConfig: { responseMimeType: 'application/json' },
       }
       const data = await callGeminiWithBackoff(geminiApiKey, requestBody)
@@ -437,8 +426,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
     } catch (err) {
       setScanError(`Scan failed: ${err.message}`)
     } finally {
-      setScanning(false)
-      e.target.value = ''
+      setScanning(false); e.target.value = ''
     }
   }
 
@@ -447,71 +435,75 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
     setMerging(true)
     const itemsRef = collection(db, 'users', user.uid, 'items')
     for (const item of scannedItems) {
-      await addDoc(itemsRef, {
-        name: item.name,
-        room: item.room,
-        value: item.value ?? null,
-        photoUrl: null,
-        createdAt: serverTimestamp(),
-      })
+      await addDoc(itemsRef, { name: item.name, room: item.room, value: item.value ?? null, photoUrl: null, createdAt: serverTimestamp() })
     }
-    setScannedItems(null)
-    setMerging(false)
+    setScannedItems(null); setMerging(false)
   }
 
   // ── Photo upload ───────────────────────────────────────────────────────────
 
-  async function uploadPhoto(file, itemIds) {
-    if (file.size > 10 * 1024 * 1024) { setUploadError('Photo must be under 10 MB.'); return }
+  async function uploadPhoto(file, itemIds = []) {
+    if (file.size > 10 * 1024 * 1024) { setUploadError('Photo must be under 10 MB.'); return null }
     const ext = file.name.split('.').pop()
     const filename = `${Date.now()}.${ext}`
     const storageRef = ref(storage, `users/${user.uid}/photos/${filename}`)
     const task = uploadBytesResumable(storageRef, file)
-    setUploadProgress(0)
-    setUploadError('')
+    setUploadProgress(0); setUploadError('')
     await new Promise((resolve, reject) => {
-      task.on(
-        'state_changed',
+      task.on('state_changed',
         snap => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
         err => { setUploadError(err.message); setUploadProgress(null); reject(err) },
         resolve,
       )
     })
     const url = await getDownloadURL(storageRef)
+    await addDoc(collection(db, 'users', user.uid, 'photos'), { url, name: file.name, uploadedAt: serverTimestamp() })
     for (const id of itemIds) {
       await updateDoc(doc(db, 'users', user.uid, 'items', id), { photoUrl: url })
     }
     setUploadProgress(null)
-    setSelectedItemIds(new Set())
+    return url
   }
 
-  function handleSinglePhotoChange(e) {
-    const file = e.target.files?.[0]
-    if (!file || !photoTargetId) return
-    uploadPhoto(file, [photoTargetId])
-    setPhotoTargetId(null)
-    e.target.value = ''
+  async function handleGalleryFiles(files) {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue
+      await uploadPhoto(file, [])
+    }
   }
 
-  function handleMultiPhotoChange(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    uploadPhoto(file, [...selectedItemIds])
-    e.target.value = ''
+  async function handleLinkPhoto(photoUrl) {
+    if (!linkingItemIds?.length) return
+    for (const id of linkingItemIds) {
+      await updateDoc(doc(db, 'users', user.uid, 'items', id), { photoUrl })
+    }
+    setLinkingItemIds(null)
   }
 
-  async function handleRemovePhoto(itemId) {
+  async function handleDeletePhoto(photoId) {
+    await deleteDoc(doc(db, 'users', user.uid, 'photos', photoId))
+  }
+
+  async function handleUnlinkPhoto(itemId) {
     await updateDoc(doc(db, 'users', user.uid, 'items', itemId), { photoUrl: null })
-    setViewerUrl(null)
-    setViewerItemId(null)
+    setViewerUrl(null); setViewerItemId(null)
+  }
+
+  async function handlePickerUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !linkingItemIds?.length) return
+    const url = await uploadPhoto(file, [])
+    if (url) await handleLinkPhoto(url)
+    e.target.value = ''
+  }
+
+  function handleDrop(e) {
+    e.preventDefault(); setIsDragging(false)
+    handleGalleryFiles([...e.dataTransfer.files])
   }
 
   function toggleSelect(id) {
-    setSelectedItemIds(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    setSelectedItemIds(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
 
   // ── Keyboard close ─────────────────────────────────────────────────────────
@@ -519,12 +511,8 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Escape') return
-      setShowAddModal(false)
-      setDeletingItem(null)
-      setShowResetModal(false)
-      setScannedItems(null)
-      setViewerUrl(null)
-      setViewerItemId(null)
+      setShowAddModal(false); setDeletingItem(null); setShowResetModal(false)
+      setScannedItems(null); setViewerUrl(null); setViewerItemId(null); setLinkingItemIds(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -532,43 +520,36 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
 
   // ── Render guards ──────────────────────────────────────────────────────────
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-      </div>
-    )
-  }
+  if (authLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+    </div>
+  )
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100">
-        <div className="bg-white rounded-2xl shadow-xl p-10 max-w-sm w-full text-center">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <BarChart2 className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">Home Inventory</h1>
-          <p className="text-slate-500 mb-8 text-sm">Track everything in your home. Sign in to get started.</p>
-          <button
-            onClick={() => signInWithPopup(auth, googleProvider)}
-            className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition"
-          >
-            <LogIn className="w-5 h-5" />
-            Sign in with Google
-          </button>
+  if (!user) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100">
+      <div className="bg-white rounded-2xl shadow-xl p-10 max-w-sm w-full text-center">
+        <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <BarChart2 className="w-8 h-8 text-white" />
         </div>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">Home Inventory</h1>
+        <p className="text-slate-500 mb-8 text-sm">Track everything in your home. Sign in to get started.</p>
+        <button
+          onClick={() => signInWithPopup(auth, googleProvider)}
+          className="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-xl transition"
+        >
+          <LogIn className="w-5 h-5" /> Sign in with Google
+        </button>
       </div>
-    )
-  }
+    </div>
+  )
 
-  if (seeding || dataLoading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
-        <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-        <p className="text-slate-600 font-medium">{seeding ? 'Setting up your inventory…' : 'Loading…'}</p>
-      </div>
-    )
-  }
+  if (seeding || dataLoading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+      <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+      <p className="text-slate-600 font-medium">{seeding ? 'Setting up your inventory…' : 'Loading…'}</p>
+    </div>
+  )
 
   // ── Main UI ────────────────────────────────────────────────────────────────
 
@@ -586,12 +567,8 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           <div className="flex items-center gap-2">
             {user.photoURL && <img src={user.photoURL} className="w-8 h-8 rounded-full" alt="avatar" />}
             <span className="text-sm text-slate-600 hidden sm:block">{user.displayName}</span>
-            <button
-              onClick={() => signOut(auth)}
-              className="flex items-center gap-1 text-slate-500 hover:text-slate-800 text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 transition"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:block">Sign out</span>
+            <button onClick={() => signOut(auth)} className="flex items-center gap-1 text-slate-500 hover:text-slate-800 text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 transition">
+              <LogOut className="w-4 h-4" /><span className="hidden sm:block">Sign out</span>
             </button>
           </div>
         </div>
@@ -605,19 +582,17 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
       <main className="max-w-7xl mx-auto px-4 py-6">
         {/* Tabs */}
         <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
-          >
-            Inventory
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1.5 ${activeTab === 'analytics' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
-          >
-            <BarChart2 className="w-4 h-4" />
-            Analytics
-          </button>
+          {[
+            { id: 'inventory', label: 'Inventory' },
+            { id: 'analytics', label: 'Analytics', icon: BarChart2 },
+            { id: 'photos', label: `Photos${photos.length ? ` (${photos.length})` : ''}`, icon: Image },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1.5 ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+            >
+              {tab.icon && <tab.icon className="w-4 h-4" />}{tab.label}
+            </button>
+          ))}
         </div>
 
         {/* ── ANALYTICS TAB ───────────────────────────────────────────────── */}
@@ -625,7 +600,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: 'Total Value', value: `£${dashboardStats.total.toLocaleString()}` },
+                { label: 'Total Value', value: `$${dashboardStats.total.toLocaleString()}` },
                 { label: 'Total Items', value: dashboardStats.totalItems },
                 { label: 'Valued Items', value: dashboardStats.valued },
                 { label: 'Pending Prices', value: dashboardStats.pending },
@@ -643,7 +618,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
                   <div key={room}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-slate-700">{room}</span>
-                      <span className="text-slate-500">{pct}% · £{val.toLocaleString()}</span>
+                      <span className="text-slate-500">{pct}% · ${val.toLocaleString()}</span>
                     </div>
                     <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${width}%` }} />
@@ -655,90 +630,113 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           </div>
         )}
 
+        {/* ── PHOTOS TAB ──────────────────────────────────────────────────── */}
+        {activeTab === 'photos' && (
+          <div className="space-y-6">
+            {/* Upload zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => galleryInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'}`}
+            >
+              <Image className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-700 font-medium">Drop photos here or click to upload</p>
+              <p className="text-slate-400 text-sm mt-1">JPEG · PNG · WEBP · HEIC · Max 10 MB each · Multiple files OK</p>
+              {uploadProgress !== null && (
+                <div className="mt-4 h-2 bg-slate-200 rounded-full overflow-hidden max-w-xs mx-auto">
+                  <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              )}
+            </div>
+
+            {uploadError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle className="w-4 h-4 shrink-0" />{uploadError}
+                <button onClick={() => setUploadError('')} className="ml-auto"><X className="w-4 h-4" /></button>
+              </div>
+            )}
+
+            {/* Gallery grid */}
+            {photos.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+                <Image className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-400 text-sm">No photos uploaded yet. Drop some above to get started.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {photos.map(photo => {
+                  const linkedCount = items.filter(i => i.photoUrl === photo.url).length
+                  return (
+                    <div key={photo.id} className="group relative bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      <img src={photo.url} alt={photo.name} className="w-full h-36 object-cover" />
+                      <div className="p-2">
+                        <p className="text-xs text-slate-500 truncate">{photo.name}</p>
+                        {linkedCount > 0
+                          ? <p className="text-xs text-blue-600 mt-0.5">{linkedCount} item{linkedCount !== 1 ? 's' : ''} linked</p>
+                          : <p className="text-xs text-slate-300 mt-0.5">Not linked</p>}
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDeletePhoto(photo.id) }}
+                        className="absolute top-2 right-2 bg-white/90 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition hover:bg-red-50"
+                        title="Remove from gallery"
+                      >
+                        <X className="w-3.5 h-3.5 text-red-500" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── INVENTORY TAB ────────────────────────────────────────────────── */}
         {activeTab === 'inventory' && (
           <div className="space-y-4">
             {/* Toolbar */}
             <div className="flex flex-wrap gap-3 items-center">
-              {/* Search */}
               <div className="relative flex-1 min-w-[180px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search items…"
-                  value={searchText}
-                  onChange={e => setSearchText(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
+                <input type="text" placeholder="Search items…" value={searchText} onChange={e => setSearchText(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
-
-              {/* Room filter */}
-              <select
-                value={roomFilter}
-                onChange={e => setRoomFilter(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              >
+              <select value={roomFilter} onChange={e => setRoomFilter(e.target.value)}
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                 <option>All Rooms</option>
                 {ROOMS.map(r => <option key={r}>{r}</option>)}
               </select>
-
-              {/* Missing prices */}
               <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={missingPricesOnly}
-                  onChange={e => setMissingPricesOnly(e.target.checked)}
-                  className="rounded"
-                />
+                <input type="checkbox" checked={missingPricesOnly} onChange={e => setMissingPricesOnly(e.target.checked)} className="rounded" />
                 Missing prices only
               </label>
 
               <div className="flex gap-2 ml-auto flex-wrap">
-                {/* Multi-photo attach */}
                 {selectedItemIds.size > 0 && (
                   <button
-                    onClick={() => multiPhotoInputRef.current?.click()}
+                    onClick={() => setLinkingItemIds([...selectedItemIds])}
                     className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition"
                   >
-                    <Image className="w-4 h-4" />
-                    Attach Photo to {selectedItemIds.size} selected
+                    <Link2 className="w-4 h-4" />
+                    Link Photo to {selectedItemIds.size} selected
                   </button>
                 )}
-
-                {/* Scan */}
-                <button
-                  onClick={() => scanInputRef.current?.click()}
-                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition"
-                >
-                  <Camera className="w-4 h-4" />
-                  Scan
+                <button onClick={() => scanInputRef.current?.click()}
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
+                  <Camera className="w-4 h-4" /> Scan
                 </button>
-
-                {/* Export */}
-                <button
-                  onClick={() => exportCSV(items)}
-                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition"
-                >
-                  <Download className="w-4 h-4" />
-                  Export
+                <button onClick={() => exportCSV(items)}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition">
+                  <Download className="w-4 h-4" /> Export
                 </button>
-
-                {/* Reset */}
-                <button
-                  onClick={() => setShowResetModal(true)}
-                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Reset
+                <button onClick={() => setShowResetModal(true)}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium px-3 py-2 rounded-lg transition">
+                  <RefreshCw className="w-4 h-4" /> Reset
                 </button>
-
-                {/* Add */}
-                <button
-                  onClick={openAdd}
-                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Item
+                <button onClick={openAdd}
+                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+                  <Plus className="w-4 h-4" /> Add Item
                 </button>
               </div>
             </div>
@@ -750,41 +748,31 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
                 <div className="flex-1">
                   <p className="text-sm font-medium text-amber-800 mb-2">Paste your Gemini API key to enable scanning</p>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="AIza…"
+                    <input type="text" placeholder="AIza…"
                       className="flex-1 border border-amber-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
-                      onKeyDown={e => { if (e.key === 'Enter') { setGeminiApiKey(e.target.value); setShowKeyInput(false) } }}
-                    />
-                    <button
-                      onClick={e => { const v = e.target.previousSibling.value; setGeminiApiKey(v); setShowKeyInput(false) }}
-                      className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm"
-                    >Save</button>
+                      onKeyDown={e => { if (e.key === 'Enter') { setGeminiApiKey(e.target.value); setShowKeyInput(false) } }} />
+                    <button onClick={e => { setGeminiApiKey(e.target.previousSibling.value); setShowKeyInput(false) }}
+                      className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm">Save</button>
                   </div>
                 </div>
                 <button onClick={() => setShowKeyInput(false)}><X className="w-4 h-4 text-amber-600" /></button>
               </div>
             )}
 
-            {/* Scan error */}
+            {/* Error banners */}
             {scanError && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {scanError}
+                <AlertCircle className="w-4 h-4 shrink-0" />{scanError}
                 <button onClick={() => setScanError('')} className="ml-auto"><X className="w-4 h-4" /></button>
               </div>
             )}
-
-            {/* Upload error */}
             {uploadError && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {uploadError}
+                <AlertCircle className="w-4 h-4 shrink-0" />{uploadError}
                 <button onClick={() => setUploadError('')} className="ml-auto"><X className="w-4 h-4" /></button>
               </div>
             )}
 
-            {/* Scanning overlay */}
             {scanning && (
               <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center justify-center gap-3">
                 <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
@@ -806,22 +794,17 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="w-10 px-3 py-3">
-                          <span className="sr-only">Select</span>
-                        </th>
+                        <th className="w-10 px-3 py-3"><span className="sr-only">Select</span></th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Room</th>
                         <th className="text-left px-4 py-3 font-medium text-slate-600">Item</th>
                         <th className="text-right px-4 py-3 font-medium text-slate-600">Value</th>
-                        <th className="w-14 px-3 py-3 font-medium text-slate-600 text-center">Photo</th>
+                        <th className="w-24 px-3 py-3 font-medium text-slate-600 text-center">Photo</th>
                         <th className="px-3 py-3 font-medium text-slate-600 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredItems.map(item => (
-                        <tr
-                          key={item.id}
-                          className={`border-b border-slate-100 hover:bg-slate-50 transition ${item.value == null ? 'bg-amber-50 hover:bg-amber-100' : ''}`}
-                        >
+                        <tr key={item.id} className={`border-b border-slate-100 hover:bg-slate-50 transition ${item.value == null ? 'bg-amber-50 hover:bg-amber-100' : ''}`}>
                           <td className="px-3 py-2 text-center">
                             <button onClick={() => toggleSelect(item.id)}>
                               {selectedItemIds.has(item.id)
@@ -832,39 +815,36 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
                           <td className="px-4 py-2 text-slate-500">{item.room}</td>
                           <td className="px-4 py-2 text-slate-800 font-medium">
                             {item.name}
-                            {item.value == null && (
-                              <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">No Price</span>
-                            )}
+                            {item.value == null && <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">No Price</span>}
                           </td>
                           <td className="px-4 py-2 text-right text-slate-700">
-                            {item.value != null ? `£${item.value.toLocaleString()}` : <span className="text-slate-300">—</span>}
+                            {item.value != null ? `$${item.value.toLocaleString()}` : <span className="text-slate-300">—</span>}
                           </td>
                           <td className="px-3 py-2 text-center">
                             {item.photoUrl ? (
-                              <button onClick={() => { setViewerUrl(item.photoUrl); setViewerItemId(item.id) }}>
-                                <img src={item.photoUrl} alt="thumb" className="w-9 h-9 rounded object-cover border border-slate-200 hover:opacity-80 transition" />
-                              </button>
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={() => { setViewerUrl(item.photoUrl); setViewerItemId(item.id) }}>
+                                  <img src={item.photoUrl} alt="thumb" className="w-9 h-9 rounded object-cover border border-slate-200 hover:opacity-80 transition" />
+                                </button>
+                                <button onClick={() => setLinkingItemIds([item.id])} title="Change photo" className="p-1 rounded hover:bg-slate-100">
+                                  <Link2 className="w-3 h-3 text-slate-400" />
+                                </button>
+                              </div>
                             ) : (
                               <button
-                                onClick={() => { setPhotoTargetId(item.id); photoInputRef.current?.click() }}
-                                className="w-9 h-9 rounded border border-dashed border-slate-300 flex items-center justify-center mx-auto hover:border-blue-400 transition"
+                                onClick={() => setLinkingItemIds([item.id])}
+                                className="flex items-center gap-1 mx-auto text-xs text-slate-400 hover:text-blue-600 border border-dashed border-slate-300 hover:border-blue-400 rounded-lg px-2 py-1.5 transition"
                               >
-                                <Camera className="w-4 h-4 text-slate-400" />
+                                <Link2 className="w-3 h-3" /> Link
                               </button>
                             )}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openEdit(item)}
-                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition"
-                              >
+                              <button onClick={() => openEdit(item)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition">
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
-                              <button
-                                onClick={() => setDeletingItem(item)}
-                                className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
-                              >
+                              <button onClick={() => setDeletingItem(item)} className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
@@ -886,8 +866,9 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
 
       {/* ── Hidden file inputs ─────────────────────────────────────────────── */}
       <input ref={scanInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleScanFile} />
-      <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={handleSinglePhotoChange} />
-      <input ref={multiPhotoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={handleMultiPhotoChange} />
+      <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple className="hidden"
+        onChange={e => { handleGalleryFiles([...e.target.files]); e.target.value = '' }} />
+      <input ref={pickerInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={handlePickerUpload} />
 
       {/* ── Add/Edit Modal ─────────────────────────────────────────────────── */}
       {showAddModal && (
@@ -895,36 +876,23 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Item Name *</label>
-              <input
-                type="text"
-                value={formName}
-                onChange={e => { setFormName(e.target.value); setFormError('') }}
-                placeholder="e.g. Sofa (3-seater)"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                autoFocus
-              />
+              <input type="text" value={formName} onChange={e => { setFormName(e.target.value); setFormError('') }}
+                placeholder="e.g. Sofa (3-seater)" autoFocus
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
               {formError && <p className="text-red-600 text-xs mt-1">{formError}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Room</label>
-              <select
-                value={formRoom}
-                onChange={e => setFormRoom(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              >
+              <select value={formRoom} onChange={e => setFormRoom(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                 {ROOMS.map(r => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Value (£)</label>
-              <input
-                type="number"
-                value={formValue}
-                onChange={e => setFormValue(e.target.value)}
-                placeholder="Leave blank if unknown"
-                min="0"
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-              />
+              <label className="block text-sm font-medium text-slate-700 mb-1">Estimated Value ($)</label>
+              <input type="number" value={formValue} onChange={e => setFormValue(e.target.value)}
+                placeholder="Leave blank if unknown" min="0"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
@@ -939,9 +907,7 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
       {/* ── Delete Modal ───────────────────────────────────────────────────── */}
       {deletingItem && (
         <Modal title="Delete Item" onClose={() => setDeletingItem(null)}>
-          <p className="text-sm text-slate-600 mb-6">
-            Are you sure you want to delete <strong>{deletingItem.name}</strong>? This can't be undone.
-          </p>
+          <p className="text-sm text-slate-600 mb-6">Are you sure you want to delete <strong>{deletingItem.name}</strong>? This can't be undone.</p>
           <div className="flex justify-end gap-2">
             <button onClick={() => setDeletingItem(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
             <button onClick={handleDeleteItem} className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition">Delete</button>
@@ -952,19 +918,13 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
       {/* ── Reset Modal ────────────────────────────────────────────────────── */}
       {showResetModal && (
         <Modal title="Reset to Defaults" onClose={() => setShowResetModal(false)}>
-          <p className="text-sm text-slate-600 mb-2">
-            This will <strong>delete all your current items</strong> and restore the 70-item default dataset. Photos in Firebase Storage are not deleted.
-          </p>
+          <p className="text-sm text-slate-600 mb-2">This will <strong>delete all your current items</strong> and restore the 72-item default dataset.</p>
           <p className="text-sm text-red-600 mb-6 font-medium">This action can't be undone.</p>
           <div className="flex justify-end gap-2">
             <button onClick={() => setShowResetModal(false)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-            <button
-              onClick={handleReset}
-              disabled={resetting}
-              className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition flex items-center gap-2"
-            >
-              {resetting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Reset to Defaults
+            <button onClick={handleReset} disabled={resetting}
+              className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700 transition flex items-center gap-2">
+              {resetting && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Reset to Defaults
             </button>
           </div>
         </Modal>
@@ -976,26 +936,18 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1 mb-4">
             {scannedItems.map((item, idx) => (
               <div key={item._id} className="flex gap-2 items-center bg-slate-50 rounded-lg p-2">
-                <input
-                  type="text"
-                  value={item.name}
+                <input type="text" value={item.name}
                   onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, name: e.target.value } : it))}
-                  className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
-                <select
-                  value={item.room}
+                  className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                <select value={item.room}
                   onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, room: e.target.value } : it))}
-                  className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                >
+                  className="border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
                   {ROOMS.map(r => <option key={r}>{r}</option>)}
                 </select>
-                <input
-                  type="number"
-                  value={item.value ?? ''}
+                <input type="number" value={item.value ?? ''}
                   onChange={e => setScannedItems(prev => prev.map((it, i) => i === idx ? { ...it, value: e.target.value === '' ? null : parseFloat(e.target.value) } : it))}
-                  placeholder="£ value"
-                  className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
+                  placeholder="$ value"
+                  className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
                 <button onClick={() => setScannedItems(prev => prev.filter((_, i) => i !== idx))}>
                   <X className="w-4 h-4 text-slate-400 hover:text-red-500" />
                 </button>
@@ -1004,13 +956,9 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
           </div>
           <div className="flex justify-end gap-2">
             <button onClick={() => setScannedItems(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-            <button
-              onClick={handleMergeScan}
-              disabled={merging || scannedItems.length === 0}
-              className="px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-2"
-            >
-              {merging && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Merge into Inventory
+            <button onClick={handleMergeScan} disabled={merging || scannedItems.length === 0}
+              className="px-4 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-2">
+              {merging && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Merge into Inventory
             </button>
           </div>
         </Modal>
@@ -1020,15 +968,58 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
       {viewerUrl && (
         <Modal title="Photo" onClose={() => { setViewerUrl(null); setViewerItemId(null) }}>
           <img src={viewerUrl} alt="Full size" className="w-full rounded-lg mb-4 max-h-96 object-contain" />
-          <div className="flex justify-between">
-            <button
-              onClick={() => handleRemovePhoto(viewerItemId)}
-              className="text-sm text-red-600 hover:underline"
-            >
-              Remove photo
-            </button>
+          <div className="flex justify-between items-center">
+            <div className="flex gap-3">
+              <button onClick={() => { setLinkingItemIds([viewerItemId]); setViewerUrl(null); setViewerItemId(null) }}
+                className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                <Link2 className="w-3.5 h-3.5" /> Change photo
+              </button>
+              <button onClick={() => handleUnlinkPhoto(viewerItemId)} className="text-sm text-red-500 hover:underline">Unlink photo</button>
+            </div>
             <button onClick={() => { setViewerUrl(null); setViewerItemId(null) }} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Close</button>
           </div>
+        </Modal>
+      )}
+
+      {/* ── Photo Picker / Link Modal ──────────────────────────────────────── */}
+      {linkingItemIds && (
+        <Modal
+          title={linkingItemIds.length === 1
+            ? `Link photo to "${items.find(i => i.id === linkingItemIds[0])?.name || 'item'}"`
+            : `Link photo to ${linkingItemIds.length} items`}
+          onClose={() => setLinkingItemIds(null)}
+          wide
+        >
+          {photos.length === 0 ? (
+            <div className="text-center py-8">
+              <Image className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500 text-sm mb-4">No photos in your gallery yet.</p>
+              <button onClick={() => { setActiveTab('photos'); setLinkingItemIds(null) }}
+                className="text-blue-600 text-sm font-medium hover:underline">
+                Go to Photos tab to upload some first
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-500 mb-4">Click a photo to link it, or upload a new one.</p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto mb-4">
+                {photos.map(photo => (
+                  <button key={photo.id} onClick={() => handleLinkPhoto(photo.url)}
+                    className="rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition group relative">
+                    <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
+                    <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/10 transition rounded-xl" />
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-between items-center border-t border-slate-100 pt-4">
+                <button onClick={() => pickerInputRef.current?.click()}
+                  className="text-sm text-blue-600 hover:underline flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5" /> Upload new photo
+                </button>
+                <button onClick={() => setLinkingItemIds(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
+              </div>
+            </>
+          )}
         </Modal>
       )}
     </div>
@@ -1039,7 +1030,8 @@ Example: [{"name":"Sofa","room":"Living Room","value":800}]`,
 
 function Modal({ title, children, onClose, wide = false }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
       <div className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} p-6`}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-semibold text-slate-800 text-lg">{title}</h2>
