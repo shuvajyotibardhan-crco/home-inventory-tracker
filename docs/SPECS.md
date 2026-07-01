@@ -286,6 +286,24 @@ async function uploadPhoto(file, activeHouseId):
   return url
 ```
 
+### Thumbnail Backfill (for photos uploaded before thumbUrl existed)
+```
+// Runs once per photo per session, driven by a useEffect watching the `photos` snapshot.
+// thumbBackfillAttempted (a Set ref) prevents retrying a photo repeatedly in one session.
+async function backfillThumbnail(photo, houseId):
+  try:
+    original = await (await fetch(photo.url)).blob()
+    thumbBlob = await createThumbnailBlob(original)
+    if !thumbBlob: return
+    thumbRef = ref(storage, `houses/${houseId}/photos/thumbs/${photo.id}.jpg`)
+    await uploadBytesResumable(thumbRef, thumbBlob)
+    thumbUrl = await getDownloadURL(thumbRef)
+    await updateDoc(doc(db, "houses", houseId, "photos", photo.id), { thumbUrl })
+  catch:
+    // Leave thumbUrl unset — gallery/picker keep falling back to the full-resolution url
+```
+Without this, only photos uploaded after the thumbnail feature shipped would get a small `thumbUrl`; every photo already in a house's gallery would have kept loading its full-resolution original in every grid. The backfill fixes existing data automatically the next time each house's Photos listener fires, with no user action required.
+
 ### Bulk Delete
 ```
 async function handleBulkDelete(selectedItemIds, activeHouseId):

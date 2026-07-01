@@ -263,10 +263,11 @@ The original seeding feature has been superseded by Feature 2. New users start w
 11. Clicking a thumbnail inside the Manage Photos modal shall open a full-size viewer modal scoped to that specific photo, with options to add another photo or remove just that photo from the item.
 12. Removing a photo from an item shall remove only that photo's URL from the item's `photoUrls` array; the item's other photos and the gallery entry must remain untouched. Removing every photo on an item must bring it back to zero photos and show the dashed "Add" button again.
 13. Every photo upload shall also produce a downscaled thumbnail (stored alongside the full-resolution original) so that the Photos tab grid, the photo picker grid, and the Manage Photos modal load a small image instead of the full-resolution file.
-14. Thumbnail and gallery images must use native lazy loading so off-screen images are not fetched until scrolled into view.
-15. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
-16. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
-17. Photos must be scoped to the house they were uploaded to — a photo uploaded under one house must never be selectable, linkable, or readable from a different house. Both the photo picker (which only lists the active house's gallery) and the Storage/Firestore security rules (which gate access by house membership) must enforce this.
+14. Photos that were uploaded before this thumbnail feature existed must not be permanently stuck loading their full-resolution original — the app shall automatically generate and attach a thumbnail to each such photo in the background the next time that house's photo gallery loads, with no manual re-upload required.
+15. Thumbnail and gallery images must use native lazy loading so off-screen images are not fetched until scrolled into view.
+16. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
+17. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
+18. Photos must be scoped to the house they were uploaded to — a photo uploaded under one house must never be selectable, linkable, or readable from a different house. Both the photo picker (which only lists the active house's gallery) and the Storage/Firestore security rules (which gate access by house membership) must enforce this.
 
 **Test Plan:**
 
@@ -284,6 +285,7 @@ The original seeding feature has been superseded by Feature 2. New users start w
 | Select 3 items via checkboxes, click "Add Photo to 3 selected" | Picker opens; clicking a photo appends it to all 3 rows |
 | Delete a gallery photo that's attached to 2 items | Photo removed from gallery; both items lose that photo from their Manage Photos list |
 | Open the photo picker and observe network requests | Grid images load the small thumbnail file, not the full-resolution original |
+| Open a house that has photos predating this feature (no `thumbUrl` field) | Within a few seconds each photo doc gains a `thumbUrl` in Firestore; subsequent grid loads use it |
 | Sign in as a second house's member and open its photo picker | Only that house's gallery photos are listed; the other house's photos never appear |
 | Attempt to upload a file over 10 MB | Error message shown; no upload attempted |
 

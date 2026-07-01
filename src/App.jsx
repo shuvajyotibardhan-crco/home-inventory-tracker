@@ -239,6 +239,7 @@ export default function App() {
   const [uploadError, setUploadError] = useState('')
   const galleryInputRef = useRef(null)
   const pickerInputRef = useRef(null)
+  const thumbBackfillAttempted = useRef(new Set())
   const [linkingItemIds, setLinkingItemIds] = useState(null)
   const [selectedItemIds, setSelectedItemIds] = useState(new Set())
   const [viewerUrl, setViewerUrl] = useState(null)
@@ -369,6 +370,33 @@ export default function App() {
       setPhotos(loaded)
     }, err => console.error('Photos error:', err))
   }, [user, activeHouseId])
+
+  // ── One-time thumbnail backfill for photos uploaded before thumbUrl existed ───
+  // Downloads the original, generates the same small JPEG uploadPhoto() creates for new
+  // photos, and writes thumbUrl back so every gallery/picker view benefits, not just new uploads.
+
+  useEffect(() => {
+    if (!activeHouseId) return
+    photos.forEach(photo => {
+      if (photo.thumbUrl || thumbBackfillAttempted.current.has(photo.id)) return
+      thumbBackfillAttempted.current.add(photo.id)
+      backfillThumbnail(photo, activeHouseId)
+    })
+  }, [photos, activeHouseId])
+
+  async function backfillThumbnail(photo, houseId) {
+    try {
+      const original = await (await fetch(photo.url)).blob()
+      const thumbBlob = await createThumbnailBlob(original)
+      if (!thumbBlob) return
+      const thumbRef = ref(storage, `houses/${houseId}/photos/thumbs/${photo.id}.jpg`)
+      await uploadBytesResumable(thumbRef, thumbBlob)
+      const thumbUrl = await getDownloadURL(thumbRef)
+      await updateDoc(doc(db, 'houses', houseId, 'photos', photo.id), { thumbUrl })
+    } catch (err) {
+      console.warn(`Thumbnail backfill failed for photo ${photo.id}:`, err.message)
+    }
+  }
 
   // ── Members listener (active house) ───────────────────────────────────────────
 
