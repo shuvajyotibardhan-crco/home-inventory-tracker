@@ -143,6 +143,28 @@ function getItemPhotos(item) {
   return item.photoUrls || (item.photoUrl ? [item.photoUrl] : [])
 }
 
+function getThumbUrl(photos, url) {
+  return photos.find(p => p.url === url)?.thumbUrl || url
+}
+
+// Downscaled JPEG used for grid/list thumbnails so those views don't pull full-resolution
+// originals over the network. Returns null if the browser can't decode the source (e.g. some
+// HEIC files) — callers fall back to the original URL in that case.
+async function createThumbnailBlob(file, maxDimension = 400) {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
+    const w = Math.round(bitmap.width * scale)
+    const h = Math.round(bitmap.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h)
+    return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.75))
+  } catch {
+    return null
+  }
+}
+
 function exportCSV(items) {
   const header = ['Room', 'Item Name', 'Estimated Value', 'Photo URLs']
   const rows = items.map(i => [i.room, i.name, i.value ?? '', getItemPhotos(i).join('; ')])
@@ -221,6 +243,7 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState(new Set())
   const [viewerUrl, setViewerUrl] = useState(null)
   const [viewerItemId, setViewerItemId] = useState(null)
+  const [manageItemId, setManageItemId] = useState(null)
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   // ── Auth listener ────────────────────────────────────────────────────────────
@@ -621,9 +644,10 @@ export default function App() {
   async function uploadPhoto(file) {
     if (file.size > 10 * 1024 * 1024) { setUploadError('Photo must be under 10 MB.'); return null }
     const ext = file.name.split('.').pop()
+    const timestamp = Date.now()
     // Path is scoped under this house's id — Storage rules only grant access to house members,
     // so a photo uploaded here can never be read or linked from another house.
-    const storageRef = ref(storage, `houses/${activeHouseId}/photos/${Date.now()}.${ext}`)
+    const storageRef = ref(storage, `houses/${activeHouseId}/photos/${timestamp}.${ext}`)
     const task = uploadBytesResumable(storageRef, file)
     setUploadProgress(0); setUploadError('')
     await new Promise((resolve, reject) => {
@@ -634,7 +658,18 @@ export default function App() {
       )
     })
     const url = await getDownloadURL(storageRef)
-    await addDoc(collection(db, 'houses', activeHouseId, 'photos'), { url, name: file.name, uploadedAt: serverTimestamp() })
+
+    // Also upload a small JPEG for gallery/picker grids — avoids pulling full-res
+    // originals just to render a thumbnail, which was the source of the slow picker.
+    let thumbUrl = url
+    const thumbBlob = await createThumbnailBlob(file)
+    if (thumbBlob) {
+      const thumbRef = ref(storage, `houses/${activeHouseId}/photos/thumbs/${timestamp}.jpg`)
+      await uploadBytesResumable(thumbRef, thumbBlob)
+      thumbUrl = await getDownloadURL(thumbRef)
+    }
+
+    await addDoc(collection(db, 'houses', activeHouseId, 'photos'), { url, thumbUrl, name: file.name, uploadedAt: serverTimestamp() })
     setUploadProgress(null)
     return url
   }
@@ -694,7 +729,7 @@ export default function App() {
     function onKey(e) {
       if (e.key !== 'Escape') return
       setShowAddModal(false); setDeletingItem(null); setConfirmBulkDelete(false)
-      setViewerUrl(null); setViewerItemId(null)
+      setViewerUrl(null); setViewerItemId(null); setManageItemId(null)
       setLinkingItemIds(null); setShowProfileModal(false); setShowCreateHouseModal(false)
       setShowShareModal(false); setShowHouseSwitcher(false)
     }
@@ -938,7 +973,7 @@ export default function App() {
                   const linkedCount = items.filter(i => getItemPhotos(i).includes(photo.url)).length
                   return (
                     <div key={photo.id} className="group relative bg-white rounded-xl border border-slate-200 overflow-hidden">
-                      <img src={photo.url} alt={photo.name} className="w-full h-36 object-cover" />
+                      <img src={photo.thumbUrl || photo.url} loading="lazy" alt={photo.name} className="w-full h-36 object-cover" />
                       <div className="p-2">
                         <p className="text-xs text-slate-500 truncate">{photo.name}</p>
                         {linkedCount > 0
@@ -1066,19 +1101,12 @@ export default function App() {
                           </td>
                           <td className="px-3 py-2 text-center">
                             {(() => {
-                              const itemPhotos = getItemPhotos(item)
-                              return itemPhotos.length > 0 ? (
-                                <div className="flex items-center justify-center gap-1 flex-wrap max-w-[110px] mx-auto">
-                                  {itemPhotos.slice(0, 3).map((url, idx) => (
-                                    <button key={idx} onClick={() => { setViewerUrl(url); setViewerItemId(item.id) }}>
-                                      <img src={url} alt="thumb" className="w-7 h-7 rounded object-cover border border-slate-200 hover:opacity-80 transition" />
-                                    </button>
-                                  ))}
-                                  {itemPhotos.length > 3 && <span className="text-[10px] text-slate-400">+{itemPhotos.length - 3}</span>}
-                                  <button onClick={() => setLinkingItemIds([item.id])} title="Add photo" className="p-1 rounded hover:bg-slate-100">
-                                    <Plus className="w-3 h-3 text-slate-400" />
-                                  </button>
-                                </div>
+                              const photoCount = getItemPhotos(item).length
+                              return photoCount > 0 ? (
+                                <button onClick={() => setManageItemId(item.id)}
+                                  className="flex items-center gap-1 mx-auto text-xs text-blue-600 hover:underline">
+                                  <Image className="w-3 h-3" /> Show Photos ({photoCount})
+                                </button>
                               ) : (
                                 <button onClick={() => setLinkingItemIds([item.id])}
                                   className="flex items-center gap-1 mx-auto text-xs text-slate-400 hover:text-blue-600 border border-dashed border-slate-300 hover:border-blue-400 rounded-lg px-2 py-1.5 transition">
@@ -1393,6 +1421,40 @@ export default function App() {
       )}
 
 
+      {/* ── Manage Item Photos ─────────────────────────────────────────────────── */}
+      {manageItemId && (() => {
+        const manageItem = items.find(i => i.id === manageItemId)
+        const itemPhotos = manageItem ? getItemPhotos(manageItem) : []
+        return (
+          <Modal title={`Photos for "${manageItem?.name || 'item'}"`} onClose={() => setManageItemId(null)} wide>
+            {itemPhotos.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">No photos on this item yet.</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto mb-4">
+                {itemPhotos.map((url, idx) => (
+                  <div key={idx} className="group relative rounded-xl overflow-hidden border border-slate-200">
+                    <button onClick={() => { setViewerUrl(url); setViewerItemId(manageItemId) }}>
+                      <img src={getThumbUrl(photos, url)} loading="lazy" alt="thumb" className="w-full h-24 object-cover" />
+                    </button>
+                    <button onClick={() => handleRemovePhotoFromItem(manageItemId, url)}
+                      className="absolute top-1 right-1 bg-white/90 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition hover:bg-red-50">
+                      <X className="w-3.5 h-3.5 text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between items-center border-t border-slate-100 pt-4">
+              <button onClick={() => setLinkingItemIds([manageItemId])}
+                className="text-sm text-blue-600 hover:underline flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5" /> Add more photos
+              </button>
+              <button onClick={() => setManageItemId(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition">Close</button>
+            </div>
+          </Modal>
+        )
+      })()}
+
       {/* ── Photo Viewer ───────────────────────────────────────────────────────── */}
       {viewerUrl && (
         <Modal title="Photo" onClose={() => { setViewerUrl(null); setViewerItemId(null) }}>
@@ -1437,7 +1499,7 @@ export default function App() {
                   return (
                     <button key={photo.id} onClick={() => handleLinkPhoto(photo.url)}
                       className={`rounded-xl overflow-hidden border-2 transition group relative ${alreadyAdded ? 'border-blue-500' : 'border-transparent hover:border-blue-500'}`}>
-                      <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
+                      <img src={photo.thumbUrl || photo.url} loading="lazy" alt={photo.name} className="w-full h-24 object-cover" />
                       <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/10 transition" />
                       {alreadyAdded && (
                         <div className="absolute top-1 right-1 bg-blue-600 rounded-full p-0.5">

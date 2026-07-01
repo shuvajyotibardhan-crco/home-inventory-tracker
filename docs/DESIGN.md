@@ -35,6 +35,7 @@ The entire application. It is divided into logical sections within a single file
 
 **Storage layer**
 - `uploadPhoto(file)` uploads to `houses/{activeHouseId}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `houses/{activeHouseId}/photos`. The path is keyed by the active house's ID, and the matching Storage rule only grants read/write to that house's members — a photo can never be uploaded into, or later read from, a house the uploader doesn't belong to.
+- `createThumbnailBlob(file, maxDimension=400)` decodes the file with `createImageBitmap`, draws it downscaled onto an offscreen `<canvas>`, and exports a JPEG blob at quality 0.75. `uploadPhoto` uploads this alongside the original to `houses/{activeHouseId}/photos/thumbs/{timestamp}.jpg` and stores the result as `thumbUrl` on the photo doc. If decoding fails (some HEIC sources aren't supported by `createImageBitmap`), `thumbUrl` falls back to the full-resolution `url` — correctness is preserved, only the size win is lost for that photo. This exists because the Photos tab grid and photo picker were pulling full-resolution originals just to render small thumbnails, which was the main cause of slow picker loads.
 - Legacy photos stored at `users/{uid}/photos/` remain readable (backwards-compat Storage rule) but new uploads always use the house-scoped path.
 - Items store a `photoUrls` array rather than a single `photoUrl`, so more than one photo can be attached to an item. `getItemPhotos(item)` reads `photoUrls`, falling back to a one-element array from the legacy `photoUrl` field for items written before this change.
 - `handleLinkPhoto(photoUrl, itemIds)` batches an `arrayUnion(photoUrl)` update onto each target item's `photoUrls`. Because it's a union (not an overwrite), calling it repeatedly with different gallery photos accumulates multiple photos on the same item without disturbing existing ones. The photo picker modal only ever lists the active house's `photos` snapshot, so the URL being unioned in is always scoped to the current house.
@@ -66,6 +67,7 @@ The entire application. It is divided into logical sections within a single file
 - `isDragging` — boolean, true while a drag is active over the Photos tab upload zone.
 - `uploadProgress` — number 0–100 for the active upload, or `null` when idle.
 - `viewerUrl` / `viewerItemId` — the specific photo URL and item ID open in the full-size viewer modal (one photo at a time, even when the item has several).
+- `manageItemId` — ID of the item whose "Manage Photos" modal is open, or `null` when closed. This modal lists small thumbnails for that item's photos with per-photo remove controls and an "Add more photos" action; the inventory grid itself renders no inline images.
 - Modal states: `showAddModal`, `showResetModal`, `showProfileModal`, `showCreateHouseModal`, `showShareModal`, `deletingItem`, `linkingItemIds`, `viewerUrl`.
 
 **Derived values (useMemo)**
@@ -98,8 +100,14 @@ Photos are uploaded to a dedicated Photos tab and stored in two places: the file
 ### House-scoped photo isolation
 Every photo lives under a `houseId`-keyed Storage path and Firestore subcollection, and both are gated by house membership rules. The client never gives a user a way to type in or paste an arbitrary photo URL — the picker only ever renders the active house's own gallery snapshot — so cross-house photo leakage would require either a membership-rule bypass or a hand-crafted Firestore write, both of which the security rules already block.
 
+### Client-side thumbnails instead of no inline grid images
+The inventory grid used to render a live `<img>` per item photo, which meant a house with many photographed items pulled dozens of full-resolution files just to draw a 36px icon. Since there's no backend to generate resized images server-side, the fix has two parts: the grid no longer renders any inline images at all — it shows a "Show Photos (N)" text link that opens a Manage Photos modal on demand — and every upload now also produces a small client-side JPEG (`createImageBitmap` + canvas downscale) stored as `thumbUrl`, so the Photos tab, photo picker, and Manage Photos modal all render a real thumbnail file instead of a shrunk-down original.
+
+### House-scoped photo isolation
+Every photo lives under a `houseId`-keyed Storage path and Firestore subcollection, and both are gated by house membership rules. The client never gives a user a way to type in or paste an arbitrary photo URL — the picker only ever renders the active house's own gallery snapshot — so cross-house photo leakage would require either a membership-rule bypass or a hand-crafted Firestore write, both of which the security rules already block.
+
 ### No backend / no Cloud Functions
-Auth, storage, and database are all handled by Firebase client SDKs. There's nothing server-side to maintain, scale, or secure beyond Firestore rules.
+Auth, storage, and database are all handled by Firebase client SDKs. There's nothing server-side to maintain, scale, or secure beyond Firestore rules. Thumbnail generation is done client-side (canvas resize before upload) rather than via a Cloud Function, keeping this constraint intact.
 
 ---
 

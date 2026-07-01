@@ -65,7 +65,9 @@
 ```
 {
   id: string          // Firestore auto-generated doc ID
-  url: string         // Firebase Storage download URL
+  url: string         // Firebase Storage download URL, full-resolution original
+  thumbUrl: string     // Firebase Storage download URL, downscaled (max 400px) JPEG for grid views;
+                        // equal to `url` when client-side thumbnail generation fails (e.g. undecodable HEIC)
   name: string        // Original filename (e.g. "living-room.jpg")
   uploadedAt: Timestamp  // Firestore server timestamp, set on upload
 }
@@ -122,7 +124,9 @@ Security rules use `isMember(houseId)` and `isOwner(houseId)` helper functions (
 houses/
   {houseId}/
     photos/
-      {timestamp}.{ext}   ← new uploads (membership checked via Firestore)
+      {timestamp}.{ext}     ← full-resolution original (membership checked via Firestore)
+      thumbs/
+        {timestamp}.jpg     ← downscaled (max 400px) JPEG thumbnail for grid views
 
 users/
   {uid}/
@@ -244,9 +248,20 @@ async function declineInvite(invite):
 
 ### Photo Upload (to gallery)
 ```
+async function createThumbnailBlob(file, maxDimension = 400):
+  try:
+    bitmap = await createImageBitmap(file)
+    scale = min(1, maxDimension / max(bitmap.width, bitmap.height))
+    canvas = new canvas sized (bitmap.width * scale, bitmap.height * scale)
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    return await canvas.toBlob('image/jpeg', quality=0.75)
+  catch:
+    return null  // undecodable source (e.g. some HEIC files) — caller falls back to the original
+
 async function uploadPhoto(file, activeHouseId):
   if file.size > 10_485_760: show error; return null
-  filename = `${Date.now()}.${ext}`
+  timestamp = Date.now()
+  filename = `${timestamp}.${ext}`
   // Path is keyed by activeHouseId — Storage rules gate read/write to house members only,
   // so this file can never be reached from a different house's gallery or picker.
   storageRef = ref(storage, `houses/${activeHouseId}/photos/${filename}`)
@@ -256,8 +271,16 @@ async function uploadPhoto(file, activeHouseId):
   )
   await uploadTask
   url = await getDownloadURL(storageRef)
+
+  thumbUrl = url
+  thumbBlob = await createThumbnailBlob(file)
+  if thumbBlob:
+    thumbRef = ref(storage, `houses/${activeHouseId}/photos/thumbs/${timestamp}.jpg`)
+    await uploadBytesResumable(thumbRef, thumbBlob)
+    thumbUrl = await getDownloadURL(thumbRef)
+
   await addDoc(collection(db, "houses", activeHouseId, "photos"), {
-    url, name: file.name, uploadedAt: serverTimestamp()
+    url, thumbUrl, name: file.name, uploadedAt: serverTimestamp()
   })
   set uploadProgress = null
   return url
@@ -465,8 +488,9 @@ service cloud.firestore {
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // House-scoped photos — membership verified via Firestore
-    match /houses/{houseId}/photos/{filename} {
+    // House-scoped photos — membership verified via Firestore.
+    // {allPaths=**} covers both the original file and the derived thumbs/ subfolder.
+    match /houses/{houseId}/photos/{allPaths=**} {
       allow read, write: if request.auth != null &&
         firestore.exists(/databases/(default)/documents/houses/$(houseId)/members/$(request.auth.uid));
     }

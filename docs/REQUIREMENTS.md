@@ -254,30 +254,36 @@ The original seeding feature has been superseded by Feature 2. New users start w
 2. Uploaded photos shall be stored in Firebase Storage at `houses/{houseId}/photos/{timestamp}.{ext}` and their metadata (URL, filename, upload timestamp) shall be saved to the `houses/{houseId}/photos` Firestore collection.
 3. The Photos tab shall display all uploaded photos in a responsive grid, showing a thumbnail, filename, and count of items currently linked to each photo.
 4. Each photo in the gallery shall have a delete button that removes the metadata document from Firestore and must also remove that photo's URL from every item's `photoUrls` array so no broken thumbnails remain (the Storage file itself is left unchanged).
-5. Each item row in the inventory grid shall display up to three photo thumbnails plus an "Add" control; an item with zero photos shall show a dashed "Add" button instead.
-6. Clicking "Add" on an item row shall open a photo picker modal showing all gallery photos; clicking a photo in the picker shall append that photo's URL to the item's `photoUrls` array without removing any photo already attached.
-7. The user must be able to attach more than one photo to the same item — the picker modal shall stay open across multiple photo selections so several photos can be added in one pass, closing only when the user clicks "Done".
-8. The user shall be able to select multiple items via checkboxes and click "Add Photo to X selected" to append one gallery photo to all selected items at once.
-9. The photo picker modal shall include an "Upload new photo" option that accepts multiple files, uploads each in turn, and appends every resulting URL to the target item(s).
-10. Clicking any thumbnail on an item row shall open a full-size viewer modal scoped to that specific photo, with options to add another photo or remove just that photo from the item.
-11. Removing a photo from an item shall remove only that photo's URL from the item's `photoUrls` array; the item's other photos and the gallery entry must remain untouched.
-12. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
-13. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
-14. Photos must be scoped to the house they were uploaded to — a photo uploaded under one house must never be selectable, linkable, or readable from a different house. Both the photo picker (which only lists the active house's gallery) and the Storage/Firestore security rules (which gate access by house membership) must enforce this.
+5. The inventory grid must not render inline photo thumbnails on each row. Instead, an item with one or more photos shall show a "Show Photos (N)" link, and an item with zero photos shall show a dashed "Add" button.
+6. Clicking "Show Photos" shall open a "Manage Photos" modal for that item, listing every attached photo as a small thumbnail with a remove control, plus an "Add more photos" action; clicking "Add" on a zero-photo row shall skip straight to the photo picker.
+7. Clicking "Add" (or "Add more photos") shall open a photo picker modal showing all gallery photos; clicking a photo in the picker shall append that photo's URL to the item's `photoUrls` array without removing any photo already attached.
+8. The user must be able to attach more than one photo to the same item — the picker modal shall stay open across multiple photo selections so several photos can be added in one pass, closing only when the user clicks "Done".
+9. The user shall be able to select multiple items via checkboxes and click "Add Photo to X selected" to append one gallery photo to all selected items at once.
+10. The photo picker modal shall include an "Upload new photo" option that accepts multiple files, uploads each in turn, and appends every resulting URL to the target item(s).
+11. Clicking a thumbnail inside the Manage Photos modal shall open a full-size viewer modal scoped to that specific photo, with options to add another photo or remove just that photo from the item.
+12. Removing a photo from an item shall remove only that photo's URL from the item's `photoUrls` array; the item's other photos and the gallery entry must remain untouched. Removing every photo on an item must bring it back to zero photos and show the dashed "Add" button again.
+13. Every photo upload shall also produce a downscaled thumbnail (stored alongside the full-resolution original) so that the Photos tab grid, the photo picker grid, and the Manage Photos modal load a small image instead of the full-resolution file.
+14. Thumbnail and gallery images must use native lazy loading so off-screen images are not fetched until scrolled into view.
+15. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
+16. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
+17. Photos must be scoped to the house they were uploaded to — a photo uploaded under one house must never be selectable, linkable, or readable from a different house. Both the photo picker (which only lists the active house's gallery) and the Storage/Firestore security rules (which gate access by house membership) must enforce this.
 
 **Test Plan:**
 
 | Step | Expected Result |
 |------|----------------|
 | Navigate to Photos tab | Upload zone and (initially empty) gallery shown |
-| Drag two images onto the upload zone | Both upload sequentially; progress bar visible; thumbnails appear in gallery |
+| Drag two images onto the upload zone | Both upload sequentially; progress bar visible; small thumbnails appear in gallery quickly |
 | Click the upload zone and select a file | File uploads; thumbnail added to gallery |
 | Check gallery card for a photo linked to 2 items | Card shows "2 items linked" |
-| Click "Add" on an item with no photo, then click three different gallery photos | Picker stays open; all three thumbnails appear on the item row after clicking "Done" |
-| Click a thumbnail, then "Add another", then pick a fourth photo | Item now shows 4 photos (row displays 3 + "+1") |
-| Open the viewer for one specific photo and click "Remove from item" | That photo disappears from the item row; the other photos on the item remain |
+| Load the inventory grid with many items that have photos | Rows show "Show Photos (N)" text links only — no inline images are fetched |
+| Click "Add" on an item with no photo, then click three different gallery photos | Picker stays open; clicking "Done" returns to the row, now showing "Show Photos (3)" |
+| Click "Show Photos (3)" | Manage Photos modal opens showing 3 small thumbnails |
+| In the Manage Photos modal, click a thumbnail, then "Add another", then pick a fourth photo | Manage Photos modal now shows 4 thumbnails |
+| In the Manage Photos modal, remove all 4 photos one at a time | Modal shows "No photos on this item yet."; row reverts to the dashed "Add" button |
 | Select 3 items via checkboxes, click "Add Photo to 3 selected" | Picker opens; clicking a photo appends it to all 3 rows |
-| Delete a gallery photo that's attached to 2 items | Photo removed from gallery; both items lose that photo from their thumbnail row |
+| Delete a gallery photo that's attached to 2 items | Photo removed from gallery; both items lose that photo from their Manage Photos list |
+| Open the photo picker and observe network requests | Grid images load the small thumbnail file, not the full-resolution original |
 | Sign in as a second house's member and open its photo picker | Only that house's gallery photos are listed; the other house's photos never appear |
 | Attempt to upload a file over 10 MB | Error message shown; no upload attempted |
 
