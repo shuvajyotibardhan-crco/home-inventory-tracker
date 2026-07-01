@@ -194,21 +194,21 @@ The AI-powered document scan feature (Gemini API) has been removed. The app now 
 
 **Acceptance Criteria:**
 1. An "Export CSV" button shall generate a CSV file containing all current inventory items (not filtered — the full dataset).
-2. The CSV shall include columns: Room, Item Name, Estimated Value, Photo URL.
+2. The CSV shall include columns: Room, Item Name, Estimated Value, Photo URLs.
 3. The file shall be named `home-inventory-[YYYY-MM-DD].csv` using the current date.
 4. Clicking the button shall trigger an immediate browser download with no confirmation step needed.
 5. Values that are `null` shall appear as an empty cell in the CSV.
-6. Items with no photo shall have an empty Photo URL cell in the CSV.
+6. Items with no photos shall have an empty Photo URLs cell in the CSV; items with multiple photos shall list every URL in that cell separated by `; `.
 
 **Test Plan:**
 
 | Step | Expected Result |
 |------|----------------|
 | Click "Export CSV" | Browser downloads a .csv file |
-| Open the CSV in a spreadsheet app | All items present with Room, Item Name, Estimated Value, Photo URL columns |
+| Open the CSV in a spreadsheet app | All items present with Room, Item Name, Estimated Value, Photo URLs columns |
 | Verify null-value items | Corresponding Value cell is empty |
-| Verify items with no photo | Photo URL cell is empty |
-| Verify items with a photo | Photo URL cell contains the Firebase Storage download URL |
+| Verify items with no photos | Photo URLs cell is empty |
+| Verify an item with 3 photos | Photo URLs cell contains all 3 download URLs separated by `; ` |
 | Check filename | Named `home-inventory-YYYY-MM-DD.csv` with today's date |
 
 ---
@@ -247,21 +247,23 @@ The original seeding feature has been superseded by Feature 2. New users start w
 
 ## Feature 13 — Photo Gallery and Item Linking
 
-**User story:** As a user, I want to upload photos to a central gallery and link them to inventory items so that I have a visual record of my assets for insurance or reference purposes.
+**User story:** As a user, I want to upload photos to a central gallery and attach one or more of them to inventory items so that I have a visual record of my assets for insurance or reference purposes.
 
 **Acceptance Criteria:**
 1. A dedicated "Photos" tab shall display a drag-and-drop upload zone accepting multiple image files at once (JPEG, PNG, WEBP, HEIC).
 2. Uploaded photos shall be stored in Firebase Storage at `houses/{houseId}/photos/{timestamp}.{ext}` and their metadata (URL, filename, upload timestamp) shall be saved to the `houses/{houseId}/photos` Firestore collection.
 3. The Photos tab shall display all uploaded photos in a responsive grid, showing a thumbnail, filename, and count of items currently linked to each photo.
-4. Each photo in the gallery shall have a delete button that removes the metadata document from Firestore (the Storage file and any existing `photoUrl` links on items are left unchanged).
-5. Each item row in the inventory grid shall display a "Link" button if no photo is linked, or a thumbnail if a photo is already linked.
-6. Clicking "Link" on an item row shall open a photo picker modal showing all gallery photos; clicking a photo in the picker shall set that photo's URL as the item's `photoUrl`.
-7. The user shall be able to select multiple items via checkboxes and click "Link Photo to X selected" to link one gallery photo to all selected items at once.
-8. The photo picker modal shall include an "Upload new photo" option that uploads directly and links the result to the target item(s).
-9. Clicking a thumbnail in the inventory grid shall open a full-size viewer modal with options to change or unlink the photo.
-10. Unlinking a photo shall set the item's `photoUrl` to `null`; the photo remains in the gallery.
-11. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
-12. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
+4. Each photo in the gallery shall have a delete button that removes the metadata document from Firestore and must also remove that photo's URL from every item's `photoUrls` array so no broken thumbnails remain (the Storage file itself is left unchanged).
+5. Each item row in the inventory grid shall display up to three photo thumbnails plus an "Add" control; an item with zero photos shall show a dashed "Add" button instead.
+6. Clicking "Add" on an item row shall open a photo picker modal showing all gallery photos; clicking a photo in the picker shall append that photo's URL to the item's `photoUrls` array without removing any photo already attached.
+7. The user must be able to attach more than one photo to the same item — the picker modal shall stay open across multiple photo selections so several photos can be added in one pass, closing only when the user clicks "Done".
+8. The user shall be able to select multiple items via checkboxes and click "Add Photo to X selected" to append one gallery photo to all selected items at once.
+9. The photo picker modal shall include an "Upload new photo" option that accepts multiple files, uploads each in turn, and appends every resulting URL to the target item(s).
+10. Clicking any thumbnail on an item row shall open a full-size viewer modal scoped to that specific photo, with options to add another photo or remove just that photo from the item.
+11. Removing a photo from an item shall remove only that photo's URL from the item's `photoUrls` array; the item's other photos and the gallery entry must remain untouched.
+12. An upload progress bar shall be shown at the top of the page while a file is being uploaded.
+13. The app must not allow uploads larger than 10 MB; it shall display an error if the file exceeds this limit.
+14. Photos must be scoped to the house they were uploaded to — a photo uploaded under one house must never be selectable, linkable, or readable from a different house. Both the photo picker (which only lists the active house's gallery) and the Storage/Firestore security rules (which gate access by house membership) must enforce this.
 
 **Test Plan:**
 
@@ -271,11 +273,12 @@ The original seeding feature has been superseded by Feature 2. New users start w
 | Drag two images onto the upload zone | Both upload sequentially; progress bar visible; thumbnails appear in gallery |
 | Click the upload zone and select a file | File uploads; thumbnail added to gallery |
 | Check gallery card for a photo linked to 2 items | Card shows "2 items linked" |
-| Click "Link" on an item with no photo | Photo picker modal opens showing gallery thumbnails |
-| Click a photo in the picker | Modal closes; thumbnail appears on the item row |
-| Select 3 items via checkboxes, click "Link Photo to 3 selected" | Picker opens; clicking a photo links it to all 3 rows |
-| Click a thumbnail in inventory grid | Full-size viewer modal opens |
-| Click "Unlink photo" in viewer | Thumbnail gone from row; `photoUrl` null in Firestore; photo still in gallery |
+| Click "Add" on an item with no photo, then click three different gallery photos | Picker stays open; all three thumbnails appear on the item row after clicking "Done" |
+| Click a thumbnail, then "Add another", then pick a fourth photo | Item now shows 4 photos (row displays 3 + "+1") |
+| Open the viewer for one specific photo and click "Remove from item" | That photo disappears from the item row; the other photos on the item remain |
+| Select 3 items via checkboxes, click "Add Photo to 3 selected" | Picker opens; clicking a photo appends it to all 3 rows |
+| Delete a gallery photo that's attached to 2 items | Photo removed from gallery; both items lose that photo from their thumbnail row |
+| Sign in as a second house's member and open its photo picker | Only that house's gallery photos are listed; the other house's photos never appear |
 | Attempt to upload a file over 10 MB | Error message shown; no upload attempted |
 
 ---

@@ -54,7 +54,8 @@
   room: string        // One of the 14 defined rooms
   name: string        // Item name, non-empty
   value: number|null  // Estimated value in USD, null if unknown
-  photoUrl: string|null  // Firebase Storage download URL, null if no photo linked
+  photoUrls: string[]  // Firebase Storage download URLs, [] if no photos attached
+  photoUrl: string|null  // LEGACY single-photo field, kept for items written before the multi-photo change; read as a 1-element fallback via getItemPhotos() when photoUrls is absent
   createdAt: Timestamp   // Firestore server timestamp, set on create
   updatedAt: Timestamp   // Firestore server timestamp, set on update
 }
@@ -243,9 +244,11 @@ async function declineInvite(invite):
 
 ### Photo Upload (to gallery)
 ```
-async function uploadPhoto(file, itemIds = [], activeHouseId):
+async function uploadPhoto(file, activeHouseId):
   if file.size > 10_485_760: show error; return null
   filename = `${Date.now()}.${ext}`
+  // Path is keyed by activeHouseId — Storage rules gate read/write to house members only,
+  // so this file can never be reached from a different house's gallery or picker.
   storageRef = ref(storage, `houses/${activeHouseId}/photos/${filename}`)
   uploadTask = uploadBytesResumable(storageRef, file)
   uploadTask.on('state_changed',
@@ -256,8 +259,6 @@ async function uploadPhoto(file, itemIds = [], activeHouseId):
   await addDoc(collection(db, "houses", activeHouseId, "photos"), {
     url, name: file.name, uploadedAt: serverTimestamp()
   })
-  for itemId in itemIds:
-    await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl: url })
   set uploadProgress = null
   return url
 ```
@@ -282,30 +283,51 @@ allRooms = [
 ```
 Combines the predefined room list with any custom rooms the user has added. Used as the `<datalist>` source in the Add/Edit item form.
 
-### Link Photo to Items
+### Add Photo to Items (multi-photo)
 ```
+function getItemPhotos(item):
+  return item.photoUrls ?? (item.photoUrl ? [item.photoUrl] : [])
+
 async function handleLinkPhoto(photoUrl, itemIds, activeHouseId):
+  batch = writeBatch(db)
   for itemId in itemIds:
-    await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl })
-  close link modal
+    batch.update(doc(db, "houses", activeHouseId, "items", itemId), { photoUrls: arrayUnion(photoUrl) })
+  await batch.commit()
+  // Picker modal is left open — arrayUnion is idempotent, so re-clicking an
+  // already-added photo is a harmless no-op and the user can add several in one pass
 ```
 
-### Unlink Photo from Item
+### Remove Photo from Item
 ```
-async function handleUnlinkPhoto(itemId, activeHouseId):
-  await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrl: null })
-  // Photo file remains in Storage and gallery — no cascading delete
+async function handleRemovePhotoFromItem(itemId, url, activeHouseId):
+  await updateDoc(doc(db, "houses", activeHouseId, "items", itemId), { photoUrls: arrayRemove(url) })
+  // Only this URL is removed — other photos on the item and the gallery record are untouched
+```
+
+### Delete Photo (from gallery, with reference cleanup)
+```
+async function handleDeletePhoto(photoId, url, activeHouseId):
+  await deleteDoc(doc(db, "houses", activeHouseId, "photos", photoId))
+  linkedItems = await getDocs(query(
+    collection(db, "houses", activeHouseId, "items"),
+    where("photoUrls", "array-contains", url)
+  ))
+  if linkedItems not empty:
+    batch = writeBatch(db)
+    for item in linkedItems.docs:
+      batch.update(item.ref, { photoUrls: arrayRemove(url) })
+    await batch.commit()
 ```
 
 ### CSV Export
 ```
 function exportCSV(items):
-  header = ["Room", "Item Name", "Estimated Value", "Photo URL"]
+  header = ["Room", "Item Name", "Estimated Value", "Photo URLs"]
   rows = items.map(i => [
     i.room,
     i.name,
     i.value ?? "",
-    i.photoUrl ?? ""
+    getItemPhotos(i).join("; ")
   ])
   csv = [header, ...rows].map(r => r.map(cell => `"${cell}"`).join(",")).join("\n")
   blob = new Blob([csv], { type: "text/csv" })
@@ -476,6 +498,7 @@ service firebase.storage {
 - The `invites` collection is readable by all signed-in users so the app can query by `inviteeEmail`. The delete rule limits who can remove an invite to the invitee or the inviter.
 - User profile documents (`users/{uid}`) are readable by all signed-in users. This is intentional — `sendInvite` must look up invitees by email. Only the owner can write their own profile doc.
 - Storage rules for house-scoped photos call `firestore.exists()` to verify membership — this cross-service check ensures photo access and Firestore membership stay in sync.
+- Photo isolation between houses is enforced at three layers: (1) Storage paths are keyed by `houseId` and the Storage rule only grants access to members of that house; (2) the Firestore `photos` and `items` subcollections live under `houses/{houseId}` and are gated by `isMember(houseId)`; (3) the client's photo picker only ever lists `photos` from the currently active house's `onSnapshot` listener, so no UI path can surface or attach another house's photo URL to an item.
 - `.env` is in `.gitignore` — credentials are never committed.
-- Photo files remain in Storage when `photoUrl` is cleared from Firestore (no cascading delete). Storage costs remain negligible for personal use.
+- Photo files remain in Storage when removed from an item's `photoUrls` array (no cascading delete). Deleting a photo from the gallery does strip it from every item's `photoUrls` (via an `array-contains` query + batch update) so thumbnails never point at a missing file. Storage costs remain negligible for personal use.
 - The Firebase service account used in CI must have the "Service Usage Consumer" IAM role to deploy Firestore and Storage rules — see `docs/MANUAL_STEPS.md` step 10.

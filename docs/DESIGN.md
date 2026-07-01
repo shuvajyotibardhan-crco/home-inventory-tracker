@@ -34,11 +34,12 @@ The entire application. It is divided into logical sections within a single file
 - `addItem`, `updateItem`, `deleteItem` target `houses/{activeHouseId}/items/{itemId}`.
 
 **Storage layer**
-- `uploadPhoto(file, itemIds)` uploads to `houses/{activeHouseId}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `houses/{activeHouseId}/photos`. Optionally links to specified item IDs immediately.
+- `uploadPhoto(file)` uploads to `houses/{activeHouseId}/photos/{timestamp}.{ext}` via `uploadBytesResumable`, tracks progress, calls `getDownloadURL`, then writes a metadata document to `houses/{activeHouseId}/photos`. The path is keyed by the active house's ID, and the matching Storage rule only grants read/write to that house's members — a photo can never be uploaded into, or later read from, a house the uploader doesn't belong to.
 - Legacy photos stored at `users/{uid}/photos/` remain readable (backwards-compat Storage rule) but new uploads always use the house-scoped path.
-- `handleLinkPhoto(photoUrl, itemIds)` writes the chosen URL to each item's `photoUrl` field.
-- `handleUnlinkPhoto(itemId)` calls `updateDoc` to set `photoUrl` to `null`; the Storage file and gallery record are left intact.
-- `handleDeletePhoto(photoId)` deletes the Firestore metadata document from `houses/{activeHouseId}/photos`; the Storage file and any item `photoUrl` links remain.
+- Items store a `photoUrls` array rather than a single `photoUrl`, so more than one photo can be attached to an item. `getItemPhotos(item)` reads `photoUrls`, falling back to a one-element array from the legacy `photoUrl` field for items written before this change.
+- `handleLinkPhoto(photoUrl, itemIds)` batches an `arrayUnion(photoUrl)` update onto each target item's `photoUrls`. Because it's a union (not an overwrite), calling it repeatedly with different gallery photos accumulates multiple photos on the same item without disturbing existing ones. The photo picker modal only ever lists the active house's `photos` snapshot, so the URL being unioned in is always scoped to the current house.
+- `handleRemovePhotoFromItem(itemId, url)` runs `arrayRemove(url)` on that one item's `photoUrls`, removing only the targeted photo — other photos on the item and the gallery record are untouched.
+- `handleDeletePhoto(photoId, url)` deletes the Firestore metadata document from `houses/{activeHouseId}/photos`, then queries items with `where('photoUrls', 'array-contains', url)` and batch-removes that URL from each match, so no item is left pointing at a deleted photo.
 
 **Sharing / invite layer**
 - `sendInvite(email)` queries `users` by email. If found, adds the user directly to `houses/{houseId}/members` and appends the house to their `houseIds`. If not found, creates an `invites/{inviteId}` document (`inviterUid`, `houseId`, `houseName`, `inviteeEmail`).
@@ -58,13 +59,13 @@ The entire application. It is divided into logical sections within a single file
 - `authLoading` — boolean, true while `onAuthStateChanged` is resolving.
 - `seeding` — boolean, true while the first-run migration is in progress.
 - `searchText`, `roomFilter`, `missingPricesOnly` — filter state.
-- `selectedItemIds` — Set of item IDs currently checked. Drives both "Link Photo to X selected" and "Delete X selected" toolbar buttons.
+- `selectedItemIds` — Set of item IDs currently checked. Drives both "Add Photo to X selected" and "Delete X selected" toolbar buttons.
 - `confirmBulkDelete` — boolean, true when the bulk-delete confirmation modal is open.
 - `allRooms` — derived (useMemo): ROOMS constant + any custom room names already present in the house's items. Used as the `<datalist>` source for the room combobox in the Add/Edit modal.
-- `linkingItemIds` — array of item IDs awaiting a photo selection in the picker modal; `null` when closed.
+- `linkingItemIds` — array of item IDs awaiting one or more photo selections in the picker modal; the modal stays open across multiple picks and only clears this to `null` when the user clicks "Done".
 - `isDragging` — boolean, true while a drag is active over the Photos tab upload zone.
 - `uploadProgress` — number 0–100 for the active upload, or `null` when idle.
-- `viewerUrl` / `viewerItemId` — URL and item ID for the full-size photo viewer modal.
+- `viewerUrl` / `viewerItemId` — the specific photo URL and item ID open in the full-size viewer modal (one photo at a time, even when the item has several).
 - Modal states: `showAddModal`, `showResetModal`, `showProfileModal`, `showCreateHouseModal`, `showShareModal`, `deletingItem`, `linkingItemIds`, `viewerUrl`.
 
 **Derived values (useMemo)**
@@ -73,7 +74,7 @@ The entire application. It is divided into logical sections within a single file
 - `dashboardStats` — total value, total count, valued count, pending count.
 
 **CSV export**
-- `exportCSV` builds a string with columns Room, Item Name, Estimated Value, Photo URL, creates a Blob, and triggers a download via a transient `<a>` element.
+- `exportCSV` builds a string with columns Room, Item Name, Estimated Value, Photo URLs (multiple URLs joined with `; `), creates a Blob, and triggers a download via a transient `<a>` element.
 
 ---
 
@@ -92,7 +93,10 @@ Firestore documents have a 1 MB size limit — base64 images can't be stored inl
 All inventory data (items, photos, members) is stored under `houses/{houseId}/` rather than `users/{uid}/`. This lets multiple users share a house without duplicating data, and it cleanly separates the identity layer (`users/`) from the asset layer (`houses/`). The cost is a slightly more complex listener setup: a top-level `users/{uid}` listener drives a dynamic map of per-house `onSnapshot` listeners. The complexity is contained in a single `useEffect` and a `houseListeners` ref.
 
 ### Central photo gallery with item linking
-Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage at `houses/{houseId}/photos/` and a lightweight metadata document in `houses/{houseId}/photos`. Items don't own photos — they hold a reference URL. The same photo can link to any number of items, and deleting a gallery record doesn't cascade to items.
+Photos are uploaded to a dedicated Photos tab and stored in two places: the file in Firebase Storage at `houses/{houseId}/photos/` and a lightweight metadata document in `houses/{houseId}/photos`. Items don't own photo files — each item holds a `photoUrls` array of reference URLs. The same gallery photo can be attached to any number of items, an item can hold any number of gallery photos, and deleting a gallery record cleans up the reference on every item that had it (rather than leaving a dangling URL).
+
+### House-scoped photo isolation
+Every photo lives under a `houseId`-keyed Storage path and Firestore subcollection, and both are gated by house membership rules. The client never gives a user a way to type in or paste an arbitrary photo URL — the picker only ever renders the active house's own gallery snapshot — so cross-house photo leakage would require either a membership-rule bypass or a hand-crafted Firestore write, both of which the security rules already block.
 
 ### No backend / no Cloud Functions
 Auth, storage, and database are all handled by Firebase client SDKs. There's nothing server-side to maintain, scale, or secure beyond Firestore rules.

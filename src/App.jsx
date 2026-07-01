@@ -35,7 +35,7 @@ import {
   LogIn, LogOut, Plus, Pencil, Trash2, X,
   BarChart2, Download, Search, Image,
   CheckSquare, Square, AlertCircle, Loader2,
-  Link2, Home, ChevronDown, Users, Share2,
+  Home, ChevronDown, Users, Share2,
   MapPin, Check, Edit3,
 } from 'lucide-react'
 
@@ -139,9 +139,13 @@ const MIGRATION_ITEMS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function getItemPhotos(item) {
+  return item.photoUrls || (item.photoUrl ? [item.photoUrl] : [])
+}
+
 function exportCSV(items) {
-  const header = ['Room', 'Item Name', 'Estimated Value', 'Photo URL']
-  const rows = items.map(i => [i.room, i.name, i.value ?? '', i.photoUrl || ''])
+  const header = ['Room', 'Item Name', 'Estimated Value', 'Photo URLs']
+  const rows = items.map(i => [i.room, i.name, i.value ?? '', getItemPhotos(i).join('; ')])
   const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const a = document.createElement('a')
@@ -399,7 +403,7 @@ export default function App() {
         const seedBatch = writeBatch(db)
         MIGRATION_ITEMS.forEach(item => {
           seedBatch.set(doc(collection(db, 'houses', houseId, 'items')), {
-            ...item, photoUrl: null, createdAt: serverTimestamp(),
+            ...item, photoUrls: [], createdAt: serverTimestamp(),
           })
         })
         await seedBatch.commit()
@@ -559,7 +563,7 @@ export default function App() {
     if (editingItem) {
       await updateDoc(doc(db, 'houses', activeHouseId, 'items', editingItem.id), payload)
     } else {
-      await addDoc(collection(db, 'houses', activeHouseId, 'items'), { ...payload, photoUrl: null, createdAt: serverTimestamp() })
+      await addDoc(collection(db, 'houses', activeHouseId, 'items'), { ...payload, photoUrls: [], createdAt: serverTimestamp() })
     }
     setShowAddModal(false)
   }
@@ -614,9 +618,11 @@ export default function App() {
 
   // ── Photos ────────────────────────────────────────────────────────────────────
 
-  async function uploadPhoto(file, itemIds = []) {
+  async function uploadPhoto(file) {
     if (file.size > 10 * 1024 * 1024) { setUploadError('Photo must be under 10 MB.'); return null }
     const ext = file.name.split('.').pop()
+    // Path is scoped under this house's id — Storage rules only grant access to house members,
+    // so a photo uploaded here can never be read or linked from another house.
     const storageRef = ref(storage, `houses/${activeHouseId}/photos/${Date.now()}.${ext}`)
     const task = uploadBytesResumable(storageRef, file)
     setUploadProgress(0); setUploadError('')
@@ -629,9 +635,6 @@ export default function App() {
     })
     const url = await getDownloadURL(storageRef)
     await addDoc(collection(db, 'houses', activeHouseId, 'photos'), { url, name: file.name, uploadedAt: serverTimestamp() })
-    for (const id of itemIds) {
-      await updateDoc(doc(db, 'houses', activeHouseId, 'items', id), { photoUrl: url })
-    }
     setUploadProgress(null)
     return url
   }
@@ -639,32 +642,40 @@ export default function App() {
   async function handleGalleryFiles(files) {
     for (const file of files) {
       if (!file.type.startsWith('image/')) continue
-      await uploadPhoto(file, [])
+      await uploadPhoto(file)
     }
   }
 
   async function handleLinkPhoto(photoUrl) {
     if (!linkingItemIds?.length) return
-    for (const id of linkingItemIds) {
-      await updateDoc(doc(db, 'houses', activeHouseId, 'items', id), { photoUrl })
-    }
-    setLinkingItemIds(null)
+    const batch = writeBatch(db)
+    linkingItemIds.forEach(id => batch.update(doc(db, 'houses', activeHouseId, 'items', id), { photoUrls: arrayUnion(photoUrl) }))
+    await batch.commit()
   }
 
-  async function handleDeletePhoto(photoId) {
+  async function handleDeletePhoto(photoId, url) {
     await deleteDoc(doc(db, 'houses', activeHouseId, 'photos', photoId))
+    // Strip the deleted photo from any items that still reference it so no broken thumbnails remain
+    const linkedSnap = await getDocs(query(collection(db, 'houses', activeHouseId, 'items'), where('photoUrls', 'array-contains', url)))
+    if (!linkedSnap.empty) {
+      const batch = writeBatch(db)
+      linkedSnap.docs.forEach(d => batch.update(d.ref, { photoUrls: arrayRemove(url) }))
+      await batch.commit()
+    }
   }
 
-  async function handleUnlinkPhoto(itemId) {
-    await updateDoc(doc(db, 'houses', activeHouseId, 'items', itemId), { photoUrl: null })
+  async function handleRemovePhotoFromItem(itemId, url) {
+    await updateDoc(doc(db, 'houses', activeHouseId, 'items', itemId), { photoUrls: arrayRemove(url) })
     setViewerUrl(null); setViewerItemId(null)
   }
 
   async function handlePickerUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file || !linkingItemIds?.length) return
-    const url = await uploadPhoto(file, [])
-    if (url) await handleLinkPhoto(url)
+    const files = [...(e.target.files || [])]
+    if (!files.length || !linkingItemIds?.length) return
+    for (const file of files) {
+      const url = await uploadPhoto(file)
+      if (url) await handleLinkPhoto(url)
+    }
     e.target.value = ''
   }
 
@@ -924,7 +935,7 @@ export default function App() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {photos.map(photo => {
-                  const linkedCount = items.filter(i => i.photoUrl === photo.url).length
+                  const linkedCount = items.filter(i => getItemPhotos(i).includes(photo.url)).length
                   return (
                     <div key={photo.id} className="group relative bg-white rounded-xl border border-slate-200 overflow-hidden">
                       <img src={photo.url} alt={photo.name} className="w-full h-36 object-cover" />
@@ -934,7 +945,7 @@ export default function App() {
                           ? <p className="text-xs text-blue-600 mt-0.5">{linkedCount} item{linkedCount !== 1 ? 's' : ''} linked</p>
                           : <p className="text-xs text-slate-300 mt-0.5">Not linked</p>}
                       </div>
-                      <button onClick={e => { e.stopPropagation(); handleDeletePhoto(photo.id) }}
+                      <button onClick={e => { e.stopPropagation(); handleDeletePhoto(photo.id, photo.url) }}
                         className="absolute top-2 right-2 bg-white/90 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition hover:bg-red-50">
                         <X className="w-3.5 h-3.5 text-red-500" />
                       </button>
@@ -969,7 +980,7 @@ export default function App() {
                   <>
                     <button onClick={() => setLinkingItemIds([...selectedItemIds])}
                       className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
-                      <Link2 className="w-4 h-4" /> Link Photo to {selectedItemIds.size} selected
+                      <Plus className="w-4 h-4" /> Add Photo to {selectedItemIds.size} selected
                     </button>
                     <button onClick={() => setConfirmBulkDelete(true)}
                       className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3 py-2 rounded-lg transition">
@@ -1054,21 +1065,27 @@ export default function App() {
                             {item.value != null ? `$${item.value.toLocaleString()}` : <span className="text-slate-300">—</span>}
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {item.photoUrl ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => { setViewerUrl(item.photoUrl); setViewerItemId(item.id) }}>
-                                  <img src={item.photoUrl} alt="thumb" className="w-9 h-9 rounded object-cover border border-slate-200 hover:opacity-80 transition" />
+                            {(() => {
+                              const itemPhotos = getItemPhotos(item)
+                              return itemPhotos.length > 0 ? (
+                                <div className="flex items-center justify-center gap-1 flex-wrap max-w-[110px] mx-auto">
+                                  {itemPhotos.slice(0, 3).map((url, idx) => (
+                                    <button key={idx} onClick={() => { setViewerUrl(url); setViewerItemId(item.id) }}>
+                                      <img src={url} alt="thumb" className="w-7 h-7 rounded object-cover border border-slate-200 hover:opacity-80 transition" />
+                                    </button>
+                                  ))}
+                                  {itemPhotos.length > 3 && <span className="text-[10px] text-slate-400">+{itemPhotos.length - 3}</span>}
+                                  <button onClick={() => setLinkingItemIds([item.id])} title="Add photo" className="p-1 rounded hover:bg-slate-100">
+                                    <Plus className="w-3 h-3 text-slate-400" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setLinkingItemIds([item.id])}
+                                  className="flex items-center gap-1 mx-auto text-xs text-slate-400 hover:text-blue-600 border border-dashed border-slate-300 hover:border-blue-400 rounded-lg px-2 py-1.5 transition">
+                                  <Plus className="w-3 h-3" /> Add
                                 </button>
-                                <button onClick={() => setLinkingItemIds([item.id])} title="Change photo" className="p-1 rounded hover:bg-slate-100">
-                                  <Link2 className="w-3 h-3 text-slate-400" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button onClick={() => setLinkingItemIds([item.id])}
-                                className="flex items-center gap-1 mx-auto text-xs text-slate-400 hover:text-blue-600 border border-dashed border-slate-300 hover:border-blue-400 rounded-lg px-2 py-1.5 transition">
-                                <Link2 className="w-3 h-3" /> Link
-                              </button>
-                            )}
+                              )
+                            })()}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center justify-center gap-1">
@@ -1098,7 +1115,7 @@ export default function App() {
       {/* ── Hidden inputs ──────────────────────────────────────────────────────── */}
       <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple className="hidden"
         onChange={e => { handleGalleryFiles([...e.target.files]); e.target.value = '' }} />
-      <input ref={pickerInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={handlePickerUpload} />
+      <input ref={pickerInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple className="hidden" onChange={handlePickerUpload} />
 
       {/* ── Profile Modal ─────────────────────────────────────────────────────── */}
       {showProfileModal && (
@@ -1384,9 +1401,9 @@ export default function App() {
             <div className="flex gap-3">
               <button onClick={() => { setLinkingItemIds([viewerItemId]); setViewerUrl(null); setViewerItemId(null) }}
                 className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-                <Link2 className="w-3.5 h-3.5" /> Change photo
+                <Plus className="w-3.5 h-3.5" /> Add another
               </button>
-              <button onClick={() => handleUnlinkPhoto(viewerItemId)} className="text-sm text-red-500 hover:underline">Unlink</button>
+              <button onClick={() => handleRemovePhotoFromItem(viewerItemId, viewerUrl)} className="text-sm text-red-500 hover:underline">Remove from item</button>
             </div>
             <button onClick={() => { setViewerUrl(null); setViewerItemId(null) }} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">Close</button>
           </div>
@@ -1397,8 +1414,8 @@ export default function App() {
       {linkingItemIds && (
         <Modal
           title={linkingItemIds.length === 1
-            ? `Link photo to "${items.find(i => i.id === linkingItemIds[0])?.name || 'item'}"`
-            : `Link photo to ${linkingItemIds.length} items`}
+            ? `Add photos to "${items.find(i => i.id === linkingItemIds[0])?.name || 'item'}"`
+            : `Add photo to ${linkingItemIds.length} items`}
           onClose={() => setLinkingItemIds(null)}
           wide
         >
@@ -1412,22 +1429,31 @@ export default function App() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-slate-500 mb-4">Click a photo to link it.</p>
+              <p className="text-sm text-slate-500 mb-4">Click photos to add them. You can add as many as you like.</p>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto mb-4">
-                {photos.map(photo => (
-                  <button key={photo.id} onClick={() => handleLinkPhoto(photo.url)}
-                    className="rounded-xl overflow-hidden border-2 border-transparent hover:border-blue-500 transition group relative">
-                    <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
-                    <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/10 transition" />
-                  </button>
-                ))}
+                {photos.map(photo => {
+                  const alreadyAdded = linkingItemIds.length === 1 &&
+                    getItemPhotos(items.find(i => i.id === linkingItemIds[0]) || {}).includes(photo.url)
+                  return (
+                    <button key={photo.id} onClick={() => handleLinkPhoto(photo.url)}
+                      className={`rounded-xl overflow-hidden border-2 transition group relative ${alreadyAdded ? 'border-blue-500' : 'border-transparent hover:border-blue-500'}`}>
+                      <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
+                      <div className="absolute inset-0 bg-blue-600/0 group-hover:bg-blue-600/10 transition" />
+                      {alreadyAdded && (
+                        <div className="absolute top-1 right-1 bg-blue-600 rounded-full p-0.5">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
               <div className="flex justify-between items-center border-t border-slate-100 pt-4">
                 <button onClick={() => pickerInputRef.current?.click()}
                   className="text-sm text-blue-600 hover:underline flex items-center gap-1.5">
                   <Plus className="w-3.5 h-3.5" /> Upload new photo
                 </button>
-                <button onClick={() => setLinkingItemIds(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancel</button>
+                <button onClick={() => setLinkingItemIds(null)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Done</button>
               </div>
             </>
           )}
